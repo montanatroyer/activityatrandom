@@ -1053,6 +1053,36 @@ function filterPlaces(places, openNow, searchCenter, radiusMeters, excludeStores
   return filtered;
 }
 
+/** Ask LLM for full-day activity ideas near a location */
+async function getFullDayIdeas(locationDesc) {
+  const prompt = `In ${locationDesc}, name 8 highly recommended full day activities or destinations that take 2+ hours. Include a mix of outdoor adventures, historical sites, scenic spots, and unique local experiences that someone would drive up to 100 miles for. Return ONLY the place or activity names, one per line, no numbering or extra text.`;
+
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${GROQ_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 300,
+        temperature: 0.9
+      })
+    });
+
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content?.trim() || '';
+    // Parse lines: strip numbering, bullets, dashes, filter empties
+    return text.split('\n')
+      .map(l => l.replace(/^[\d\-\.\)\*•]+\s*/, '').trim())
+      .filter(l => l.length > 0 && l.length < 100);
+  } catch {
+    return [];
+  }
+}
+
 async function generateDescription(name, address) {
   const prompt = `Write a fun, enthusiastic 2-3 sentence description for an activity venue called "${name}" located at "${address}". Be creative and make it sound like an exciting thing to go do. Don't use quotation marks around the venue name.`;
 
@@ -1186,9 +1216,21 @@ generateBtn.addEventListener('click', async () => {
     const onlyCat = isFullDay ? null : getOnlyCategory();
 
     if (isFullDay) {
-      // Full day mode — use curated full-day lists, ignore category selections
-      typeSelections.push(...FULL_DAY_TYPES);
-      textSelections.push(...FULL_DAY_TEXT_QUERIES);
+      // Full day mode — ask LLM for local ideas first
+      const locationDesc = (!useGeo && mode === 'zip' && zip)
+        ? `zip code ${zip}`
+        : `coordinates ${searchCenter.lat.toFixed(4)}, ${searchCenter.lng.toFixed(4)}`;
+      const llmIdeas = await getFullDayIdeas(locationDesc);
+      if (llmIdeas.length > 0) {
+        // LLM returned ideas — use them as primary text searches
+        textSelections.push(...llmIdeas);
+        // Add type-based searches for extra coverage, skip hardcoded text queries
+        typeSelections.push(...FULL_DAY_TYPES);
+      } else {
+        // LLM failed — fall back to curated lists
+        typeSelections.push(...FULL_DAY_TYPES);
+        textSelections.push(...FULL_DAY_TEXT_QUERIES);
+      }
     } else if (onlyCat) {
       // "Only" toggle is active — use ALL activities in that category
       onlyCat.querySelectorAll('.activity-grid input[type="checkbox"]').forEach(cb => {
