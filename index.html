@@ -341,6 +341,54 @@
     40% { transform: scale(1); }
   }
 
+  /* --- Dev Debug Panel --- */
+  .dev-toggle {
+    position: fixed;
+    bottom: 1rem;
+    right: 1rem;
+    background: #ff4444;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+    z-index: 100;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+  }
+  .dev-toggle:hover { opacity: 1; }
+  .dev-toggle.on { background: #44aa44; }
+  .dev-panel {
+    display: none;
+    width: 100%;
+    margin-top: 1.5rem;
+    background: #1a1a2e;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 1rem;
+    font-size: 0.8rem;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+  .dev-panel.active { display: block; }
+  .dev-panel h3 { color: #ff4444; margin-bottom: 0.5rem; font-size: 0.9rem; }
+  .dev-section { margin-bottom: 0.75rem; }
+  .dev-section summary { cursor: pointer; color: #aaa; font-weight: 600; margin-bottom: 0.3rem; }
+  .dev-section summary:hover { color: #fff; }
+  .dev-place {
+    padding: 0.3rem 0;
+    border-bottom: 1px solid #222;
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+  .dev-place-name { color: #7ec8e3; }
+  .dev-place-meta { color: #666; text-align: right; white-space: nowrap; font-size: 0.75rem; }
+  .dev-place.filtered { opacity: 0.35; }
+  .dev-stat { color: #888; margin-bottom: 0.3rem; }
+
   /* --- Result Card --- */
   .result-card {
     display: none;
@@ -754,9 +802,18 @@
     </div>
     <div class="result-description" id="resultDesc">Loading description...</div>
   </div>
+
+  <!-- Dev: All Results Debug Panel -->
+  <div class="dev-panel" id="devPanel"></div>
 </div>
 
+<button class="dev-toggle" id="devToggle" style="display:none;">DEV</button>
+
 <script>
+// ========== DEV MODE ==========
+// Set to true for local development to see all search results
+const DEV_MODE = false;
+
 // API keys are stored in Vercel environment variables — calls go through /api/* proxies
 
 // Default activity types when no filters are selected (type-based only for efficiency)
@@ -836,6 +893,56 @@ const resultDesc = document.getElementById('resultDesc');
 const resultMaps = document.getElementById('resultMaps');
 const resultWebsite = document.getElementById('resultWebsite');
 const resultHours = document.getElementById('resultHours');
+const devPanel = document.getElementById('devPanel');
+const devToggle = document.getElementById('devToggle');
+
+// --- Dev mode setup ---
+let devVisible = true;
+if (DEV_MODE) {
+  devToggle.style.display = '';
+  devToggle.classList.add('on');
+  devToggle.addEventListener('click', () => {
+    devVisible = !devVisible;
+    devPanel.classList.toggle('active', devVisible && devPanel.innerHTML !== '');
+    devToggle.classList.toggle('on', devVisible);
+  });
+}
+
+function renderDevPanel(labeledResults, mergedPlaces, filteredPlaces, searchCenter) {
+  if (!DEV_MODE) return;
+  const filteredIds = new Set(filteredPlaces.map(p => p.googleMapsUri || p.displayName?.text));
+
+  let html = '<h3>Search Results Debug</h3>';
+  html += `<div class="dev-stat">Queries: ${labeledResults.length} | Raw total: ${labeledResults.reduce((s, r) => s + r.places.length, 0)} | Deduplicated: ${mergedPlaces.length} | After filters: ${filteredPlaces.length}</div>`;
+
+  for (const { label, places } of labeledResults) {
+    html += `<details class="dev-section"${places.length > 0 ? ' open' : ''}>`;
+    html += `<summary>${label} (${places.length})</summary>`;
+    for (const p of places) {
+      const name = p.displayName?.text || 'Unknown';
+      const id = p.googleMapsUri || name;
+      const inFiltered = filteredIds.has(id);
+      let meta = '';
+      if (p.rating) meta += p.rating.toFixed(1);
+      if (p.location && searchCenter) {
+        const dist = haversine(searchCenter.lat, searchCenter.lng, p.location.latitude, p.location.longitude);
+        meta += (meta ? ' | ' : '') + dist.toFixed(1) + 'mi';
+      }
+      const openStatus = p.currentOpeningHours?.openNow;
+      if (openStatus === true) meta += ' | Open';
+      else if (openStatus === false) meta += ' | Closed';
+      html += `<div class="dev-place${inFiltered ? '' : ' filtered'}">`;
+      html += `<span class="dev-place-name">${name}</span>`;
+      html += `<span class="dev-place-meta">${meta}${inFiltered ? '' : ' [filtered out]'}</span>`;
+      html += `</div>`;
+    }
+    if (places.length === 0) html += '<div style="color:#555;">No results</div>';
+    html += '</details>';
+  }
+
+  devPanel.innerHTML = html;
+  if (devVisible) devPanel.classList.add('active');
+}
 
 // --- Helpers ---
 
@@ -994,8 +1101,11 @@ function deduplicate(places) {
 }
 
 /** Filter places: remove closed businesses, optionally filter stores and open now */
-function filterPlaces(places, openNow, searchCenter, radiusMeters, excludeStores = false) {
-  let filtered = places.filter(p => !p.businessStatus || p.businessStatus === 'OPERATIONAL');
+function filterPlaces(places, openNow, searchCenter, radiusMeters, excludeStores = false, isFullDay = false) {
+  // Full day mode skips businessStatus filter — historic sites, ghost towns, etc. may not be "OPERATIONAL"
+  let filtered = isFullDay
+    ? places
+    : places.filter(p => !p.businessStatus || p.businessStatus === 'OPERATIONAL');
 
   // Exclude stores by name keywords (safety net for results that slip through API filtering)
   if (excludeStores) {
@@ -1156,6 +1266,8 @@ generateBtn.addEventListener('click', async () => {
 
   clearError();
   resultCard.classList.remove('active');
+  devPanel.classList.remove('active');
+  devPanel.innerHTML = '';
   setLoading(true);
 
   try {
@@ -1238,34 +1350,35 @@ generateBtn.addEventListener('click', async () => {
     const openNow = isFullDay ? false : openNowCheckbox.checked;
 
     // 5. Search — run type-based and text-based searches in parallel
-    const searchPromises = [];
+    const labeledPromises = []; // { label, promise }
     const wideSearch = radiusMeters > NEARBY_MAX_RADIUS;
 
     if (nothingSelected) {
-      // Default: search with all default types (no shopping types)
-      searchPromises.push(searchNearbyByType(searchCenter.lat, searchCenter.lng, radiusMeters, DEFAULT_ACTIVITY_TYPES));
+      labeledPromises.push({ label: 'Nearby: default types', promise: searchNearbyByType(searchCenter.lat, searchCenter.lng, radiusMeters, DEFAULT_ACTIVITY_TYPES) });
     } else {
       if (typeSelections.length > 0) {
-        // Always run Nearby Search (capped at 50km) for type-based results
-        searchPromises.push(searchNearbyByType(searchCenter.lat, searchCenter.lng, radiusMeters, typeSelections));
-        // For wide radius, also run Text Search for each type to cover beyond 50km
+        labeledPromises.push({ label: 'Nearby: ' + typeSelections.join(', '), promise: searchNearbyByType(searchCenter.lat, searchCenter.lng, radiusMeters, typeSelections) });
         if (wideSearch) {
           for (const t of typeSelections) {
-            const label = t.replace(/_/g, ' '); // e.g. "ski_resort" → "ski resort"
-            searchPromises.push(searchByText(label, searchCenter.lat, searchCenter.lng, radiusMeters, excludeStores));
+            const label = t.replace(/_/g, ' ');
+            labeledPromises.push({ label: 'Text: ' + label, promise: searchByText(label, searchCenter.lat, searchCenter.lng, radiusMeters, excludeStores) });
           }
         }
       }
       for (const query of textSelections) {
-        searchPromises.push(searchByText(query, searchCenter.lat, searchCenter.lng, radiusMeters, excludeStores));
+        labeledPromises.push({ label: 'Text: ' + query, promise: searchByText(query, searchCenter.lat, searchCenter.lng, radiusMeters, excludeStores) });
       }
     }
 
-    const allResults = await Promise.all(searchPromises);
-    const mergedPlaces = deduplicate(allResults.flat());
+    const rawResults = await Promise.all(labeledPromises.map(lp => lp.promise));
+    const labeledResults = labeledPromises.map((lp, i) => ({ label: lp.label, places: rawResults[i] }));
+    const mergedPlaces = deduplicate(rawResults.flat());
 
     // 6. Filter
-    let places = filterPlaces(mergedPlaces, openNow, searchCenter, radiusMeters, excludeStores);
+    let places = filterPlaces(mergedPlaces, openNow, searchCenter, radiusMeters, excludeStores, isFullDay);
+
+    // Dev: populate debug panel
+    renderDevPanel(labeledResults, mergedPlaces, places, searchCenter);
 
     if (places.length === 0) {
       throw new Error('No results found. Try expanding your search distance or removing filters.');
