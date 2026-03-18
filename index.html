@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Activity At Random</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0f0f0f;
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem 1rem;
+    position: relative;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Ctext x='20' y='40' font-size='28' opacity='0.07'%3E🎳%3C/text%3E%3Ctext x='110' y='30' font-size='24' opacity='0.06'%3E🧗%3C/text%3E%3Ctext x='60' y='90' font-size='26' opacity='0.07'%3E🎮%3C/text%3E%3Ctext x='150' y='80' font-size='22' opacity='0.05'%3E🎬%3C/text%3E%3Ctext x='10' y='140' font-size='24' opacity='0.06'%3E🏊%3C/text%3E%3Ctext x='100' y='150' font-size='28' opacity='0.07'%3E🎯%3C/text%3E%3Ctext x='40' y='190' font-size='22' opacity='0.05'%3E🏄%3C/text%3E%3Ctext x='150' y='180' font-size='26' opacity='0.06'%3E🎭%3C/text%3E%3C/svg%3E")
+      repeat;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  body > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  h1 {
+    font-size: 1.8rem;
+    margin-bottom: 0.3rem;
+    color: #fff;
+  }
+
+  .subtitle {
+    color: #888;
+    margin-bottom: 2rem;
+    font-size: 0.95rem;
+  }
+
+  .app {
+    width: 100%;
+    max-width: 520px;
+  }
+
+  /* --- Form Controls --- */
+  .field { margin-bottom: 1.2rem; }
+
+  label {
+    display: block;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #999;
+    margin-bottom: 0.4rem;
+  }
+
+  input[type="text"], select {
+    width: 100%;
+    padding: 0.65rem 0.8rem;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    color: #e0e0e0;
+    font-size: 1rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  input[type="text"]:focus, select:focus {
+    border-color: #06b6d4;
+  }
+
+  select { cursor: pointer; }
+  select:disabled { opacity: 0.4; cursor: not-allowed; }
+  select option { background: #1a1a1a; }
+
+  .row {
+    display: flex;
+    gap: 0.8rem;
+  }
+
+  .row > .field { flex: 1; }
+
+  /* --- Activity Checkboxes --- */
+  .activity-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.4rem 0.8rem;
+  }
+
+  .activity-grid label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.9rem;
+    text-transform: none;
+    letter-spacing: 0;
+    color: #ccc;
+    cursor: pointer;
+  }
+
+  .activity-grid input[type="checkbox"] {
+    accent-color: #06b6d4;
+    width: 16px;
+    height: 16px;
+  }
+
+  /* --- Toggle --- */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 1.2rem;
+  }
+
+  .toggle-row span {
+    font-size: 0.9rem;
+    color: #ccc;
+  }
+
+  .toggle {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    cursor: pointer;
+  }
+
+  .toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .toggle .slider {
+    position: absolute;
+    inset: 0;
+    background: #333;
+    border-radius: 24px;
+    transition: background 0.2s;
+  }
+
+  .toggle .slider::before {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    left: 3px;
+    bottom: 3px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.2s;
+  }
+
+  .toggle input:checked + .slider { background: #06b6d4; }
+  .toggle input:checked + .slider::before { transform: translateX(20px); }
+
+  /* --- Button --- */
+  .btn {
+    width: 100%;
+    padding: 0.8rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    background: #06b6d4;
+    color: #fff;
+    transition: background 0.2s, transform 0.1s;
+  }
+
+  .btn:hover { background: #0891b2; }
+  .btn:active { transform: scale(0.98); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* --- Spinner --- */
+  .spinner {
+    display: none;
+    justify-content: center;
+    align-items: center;
+    padding: 2rem 0;
+  }
+
+  .spinner.active { display: flex; }
+
+  .spinner .dot {
+    width: 10px;
+    height: 10px;
+    margin: 0 4px;
+    background: #06b6d4;
+    border-radius: 50%;
+    animation: bounce 1.2s infinite ease-in-out;
+  }
+
+  .spinner .dot:nth-child(2) { animation-delay: 0.15s; }
+  .spinner .dot:nth-child(3) { animation-delay: 0.3s; }
+
+  @keyframes bounce {
+    0%, 80%, 100% { transform: scale(0); }
+    40% { transform: scale(1); }
+  }
+
+  /* --- Result Card --- */
+  .result-card {
+    display: none;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-top: 1.5rem;
+    animation: fadeUp 0.4s ease-out;
+  }
+
+  .result-card.active { display: block; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .result-card h2 {
+    font-size: 1.3rem;
+    color: #fff;
+    margin-bottom: 0.5rem;
+  }
+
+  .result-meta {
+    font-size: 0.85rem;
+    color: #999;
+    line-height: 1.6;
+    margin-bottom: 1rem;
+  }
+
+  .result-meta .rating { color: #f5c518; }
+  .result-meta .open { color: #4caf50; }
+  .result-meta .closed { color: #ef5350; }
+
+  .result-meta .distance {
+    color: #67e8f9;
+  }
+
+  .result-description {
+    font-size: 0.95rem;
+    line-height: 1.55;
+    color: #bbb;
+    border-top: 1px solid #2a2a2a;
+    padding-top: 1rem;
+  }
+
+  .result-description.loading {
+    color: #666;
+    font-style: italic;
+  }
+
+  .result-actions {
+    margin-bottom: 0.6rem;
+    display: flex;
+    gap: 0.6rem;
+  }
+
+  .result-actions a {
+    font-size: 0.85rem;
+    color: #22d3ee;
+    text-decoration: none;
+  }
+
+  .result-actions a:hover { text-decoration: underline; }
+
+  /* --- Error --- */
+  .error-msg {
+    display: none;
+    background: #2a1515;
+    border: 1px solid #5a2020;
+    border-radius: 8px;
+    padding: 0.8rem 1rem;
+    margin-top: 1rem;
+    color: #ef5350;
+    font-size: 0.9rem;
+  }
+
+  .error-msg.active { display: block; }
+
+  /* --- Responsive --- */
+  @media (max-width: 500px) {
+    .row { flex-direction: column; gap: 0; }
+    .activity-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<h1>Activity At Random</h1>
+<p class="subtitle">Randomly pick something fun to do near you</p>
+
+<div class="app">
+  <!-- Use My Location Toggle -->
+  <div class="toggle-row">
+    <label class="toggle">
+      <input type="checkbox" id="useMyLocation">
+      <span class="slider"></span>
+    </label>
+    <span>Use my location</span>
+  </div>
+
+  <!-- Geolocation status (hidden by default) -->
+  <div class="field" id="geoField" style="display:none;">
+    <label>Location</label>
+    <span id="geoStatus" style="font-size:0.9rem;color:#999;">Click Generate to detect your location</span>
+  </div>
+
+  <!-- Location Mode -->
+  <div class="field" id="locationModeField">
+    <label for="locationMode">Search by</label>
+    <select id="locationMode">
+      <option value="zip">Zip Code</option>
+      <option value="dd">Longitude/Latitude (Copy From Google Maps)</option>
+    </select>
+  </div>
+
+  <!-- Zipcode input -->
+  <div class="field" id="zipField">
+    <label for="zipcode">Zip Code</label>
+    <input type="text" id="zipcode" placeholder="e.g. 90210" maxlength="10">
+  </div>
+
+  <!-- DD input -->
+  <div class="field" id="ddField" style="display:none;">
+    <label for="dd">Coordinates</label>
+    <input type="text" id="dd" placeholder="e.g. 34.052235, -118.243683">
+  </div>
+
+  <!-- Distance -->
+  <div class="row">
+    <div class="field">
+      <label for="distance">Distance</label>
+      <select id="distance" disabled>
+        <option value="3219">Walkable (0–2 miles)</option>
+        <option value="8047">0–5 miles</option>
+        <option value="16093" selected>0–10 miles</option>
+        <option value="32187">0–20 miles</option>
+        <option value="50000">0–30 miles</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Open Now Toggle -->
+  <div class="toggle-row">
+    <label class="toggle">
+      <input type="checkbox" id="openNow" checked>
+      <span class="slider"></span>
+    </label>
+    <span>Open now only</span>
+  </div>
+
+  <!-- Active & Sports -->
+  <div class="field">
+    <label>Active & Sports (leave blank for any)</label>
+    <div class="activity-grid" id="activeGrid">
+      <label><input type="checkbox" value="bowling_alley"> Bowling</label>
+      <label><input type="checkbox" value="fitness_center"> Fitness / Gym</label>
+      <label><input type="checkbox" value="golf_course"> Golf</label>
+      <label><input type="checkbox" value="skateboard_park"> Skateparks</label>
+      <label><input type="checkbox" value="sports_club"> Sports Club</label>
+      <label><input type="checkbox" value="swimming_pool"> Swimming</label>
+    </div>
+  </div>
+
+  <!-- Entertainment -->
+  <div class="field">
+    <label>Entertainment</label>
+    <div class="activity-grid" id="entertainmentGrid">
+      <label><input type="checkbox" value="amusement_center"> Arcades</label>
+      <label><input type="checkbox" value="amusement_park"> Theme Parks</label>
+      <label><input type="checkbox" value="movie_theater"> Movies</label>
+      <label><input type="checkbox" value="karaoke"> Karaoke</label>
+      <label><input type="checkbox" value="water_park"> Water Parks</label>
+    </div>
+  </div>
+
+  <!-- Outdoors -->
+  <div class="field">
+    <label>Outdoors</label>
+    <div class="activity-grid" id="outdoorsGrid">
+      <label><input type="checkbox" value="hiking_area"> Hiking</label>
+      <label><input type="checkbox" value="park"> Parks</label>
+      <label><input type="checkbox" value="national_park"> National Parks</label>
+      <label><input type="checkbox" value="ski_resort"> Skiing</label>
+      <label><input type="checkbox" value="marina"> Boating / Marina</label>
+      <label><input type="checkbox" value="dog_park"> Dog Parks</label>
+    </div>
+  </div>
+
+  <!-- Culture & Relaxation -->
+  <div class="field">
+    <label>Culture & Relaxation</label>
+    <div class="activity-grid" id="cultureGrid">
+      <label><input type="checkbox" value="museum"> Museums</label>
+      <label><input type="checkbox" value="art_gallery"> Art Galleries</label>
+      <label><input type="checkbox" value="zoo"> Zoo</label>
+      <label><input type="checkbox" value="spa"> Spa</label>
+      <label><input type="checkbox" value="cultural_center"> Cultural Centers</label>
+      <label><input type="checkbox" value="tourist_attraction"> Tourist Attractions</label>
+    </div>
+  </div>
+
+  <!-- Generate Button -->
+  <button class="btn" id="generateBtn">Generate</button>
+
+  <!-- Spinner -->
+  <div class="spinner" id="spinner">
+    <div class="dot"></div>
+    <div class="dot"></div>
+    <div class="dot"></div>
+  </div>
+
+  <!-- Error -->
+  <div class="error-msg" id="error"></div>
+
+  <!-- Result -->
+  <div class="result-card" id="result">
+    <h2 id="resultName"></h2>
+    <div class="result-actions">
+      <a id="resultMaps" href="#" target="_blank" rel="noopener">Open in Google Maps</a>
+      <a id="resultWebsite" href="#" target="_blank" rel="noopener" style="display:none;">Visit Website</a>
+    </div>
+    <div class="result-meta">
+      <div id="resultAddress"></div>
+      <div><span class="rating" id="resultRating"></span> <span id="resultOpenStatus"></span></div>
+      <div id="resultHours"></div>
+      <div class="distance" id="resultDistance"></div>
+    </div>
+    <div class="result-description" id="resultDesc">Loading description...</div>
+  </div>
+</div>
+
+<script>
+const GOOGLE_API_KEY = 'GOOGLE_API_KEY_REMOVED';
+const GROQ_API_KEY = 'GROQ_API_KEY_REMOVED';
+
+// Default activity types when no filters are selected
+const DEFAULT_ACTIVITY_TYPES = [
+  'bowling_alley', 'fitness_center', 'golf_course', 'skateboard_park',
+  'sports_club', 'swimming_pool', 'amusement_center', 'amusement_park',
+  'movie_theater', 'karaoke', 'water_park', 'hiking_area', 'park',
+  'ski_resort', 'marina', 'museum', 'art_gallery', 'zoo', 'spa',
+  'cultural_center', 'tourist_attraction'
+];
+
+// --- DOM refs ---
+const locationMode = document.getElementById('locationMode');
+const locationModeField = document.getElementById('locationModeField');
+const zipField = document.getElementById('zipField');
+const ddField = document.getElementById('ddField');
+const useMyLocationToggle = document.getElementById('useMyLocation');
+const geoField = document.getElementById('geoField');
+const geoStatus = document.getElementById('geoStatus');
+const zipcodeInput = document.getElementById('zipcode');
+const ddInput = document.getElementById('dd');
+const distanceSelect = document.getElementById('distance');
+const openNowCheckbox = document.getElementById('openNow');
+const generateBtn = document.getElementById('generateBtn');
+const spinner = document.getElementById('spinner');
+const errorDiv = document.getElementById('error');
+const resultCard = document.getElementById('result');
+const resultName = document.getElementById('resultName');
+const resultAddress = document.getElementById('resultAddress');
+const resultRating = document.getElementById('resultRating');
+const resultOpenStatus = document.getElementById('resultOpenStatus');
+const resultDistance = document.getElementById('resultDistance');
+const resultDesc = document.getElementById('resultDesc');
+const resultMaps = document.getElementById('resultMaps');
+const resultWebsite = document.getElementById('resultWebsite');
+const resultHours = document.getElementById('resultHours');
+
+// --- Helpers ---
+
+function showError(msg) {
+  errorDiv.textContent = msg;
+  errorDiv.classList.add('active');
+}
+
+function clearError() {
+  errorDiv.classList.remove('active');
+}
+
+function setLoading(on) {
+  spinner.classList.toggle('active', on);
+  generateBtn.disabled = on;
+}
+
+/** Parse decimal degrees string like `34.052235, -118.243683` into { lat, lng } */
+function parseDD(str) {
+  const parts = str.split(/[,\s]+/).filter(Boolean);
+  if (parts.length !== 2) return null;
+  const lat = parseFloat(parts[0]);
+  const lng = parseFloat(parts[1]);
+  if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  return { lat, lng };
+}
+
+/** Haversine distance in miles */
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 3958.8;
+  const toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/** Get browser geolocation as { lat, lng } */
+function getBrowserLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('Geolocation is not supported by your browser.'));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      err => {
+        switch (err.code) {
+          case err.PERMISSION_DENIED:
+            reject(new Error('Location permission denied. Please allow location access and try again.'));
+            break;
+          case err.POSITION_UNAVAILABLE:
+            reject(new Error('Location information is unavailable. Please try again or use zipcode instead.'));
+            break;
+          case err.TIMEOUT:
+            reject(new Error('Location request timed out. Please try again or use zipcode instead.'));
+            break;
+          default:
+            reject(new Error('Unable to get your location. Please try again or use zipcode instead.'));
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 }
+    );
+  });
+}
+
+/** Geocode a zipcode to lat/lng using Google Places Text Search API */
+async function geocodeZipcode(zip) {
+  const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': GOOGLE_API_KEY,
+      'X-Goog-FieldMask': 'places.location'
+    },
+    body: JSON.stringify({ textQuery: `zipcode ${zip}, USA` })
+  });
+  const data = await res.json();
+  if (!data.places || !data.places.length) {
+    throw new Error('Could not find that zipcode. Please check and try again.');
+  }
+  const loc = data.places[0].location;
+  return { lat: loc.latitude, lng: loc.longitude };
+}
+
+/** Search nearby activities using Google Places API (New) */
+async function searchNearby(lat, lng, radiusMeters, activityTypes, openNow) {
+  const typesToSearch = activityTypes.length > 0 ? activityTypes : DEFAULT_ACTIVITY_TYPES;
+
+  const fieldMask = [
+    'places.displayName',
+    'places.formattedAddress',
+    'places.rating',
+    'places.userRatingCount',
+    'places.currentOpeningHours',
+    'places.location',
+    'places.googleMapsUri',
+    'places.businessStatus',
+    'places.websiteUri'
+  ].join(',');
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Goog-Api-Key': GOOGLE_API_KEY,
+    'X-Goog-FieldMask': fieldMask
+  };
+
+  const baseBody = {
+    locationRestriction: {
+      circle: {
+        center: { latitude: lat, longitude: lng },
+        radius: radiusMeters
+      }
+    },
+    maxResultCount: 20,
+    languageCode: 'en'
+  };
+
+  // Google Nearby Search allows at most 50 includedTypes per request.
+  // Split types into chunks if needed and also vary ranking for variety.
+  const fetches = [];
+
+  // Chunk types into groups of 50 (our list is ~21, well under)
+  const chunks = [];
+  for (let i = 0; i < typesToSearch.length; i += 50) {
+    chunks.push(typesToSearch.slice(i, i + 50));
+  }
+
+  for (const chunk of chunks) {
+    fetches.push(
+      fetch('https://places.googleapis.com/v1/places:searchNearby', {
+        method: 'POST', headers,
+        body: JSON.stringify({ ...baseBody, includedTypes: chunk, rankPreference: 'POPULARITY' })
+      }),
+      fetch('https://places.googleapis.com/v1/places:searchNearby', {
+        method: 'POST', headers,
+        body: JSON.stringify({ ...baseBody, includedTypes: chunk, rankPreference: 'DISTANCE' })
+      })
+    );
+  }
+
+  const responses = await Promise.all(fetches);
+  const results = await Promise.all(responses.map(r => r.json()));
+
+  if (results.every(d => d.error)) {
+    const firstError = results.find(d => d.error);
+    throw new Error(firstError.error.message || 'Google Places API error');
+  }
+
+  // Merge and deduplicate by name + address
+  const seen = new Set();
+  const allPlaces = [];
+  for (const data of results) {
+    for (const p of (data.places || [])) {
+      const key = (p.displayName?.text || '') + '|' + (p.formattedAddress || '');
+      if (!seen.has(key)) {
+        seen.add(key);
+        allPlaces.push(p);
+      }
+    }
+  }
+
+  // Filter out permanently closed places
+  let filtered = allPlaces.filter(p => !p.businessStatus || p.businessStatus === 'OPERATIONAL');
+
+  // Filter by open now if toggled on
+  if (openNow) {
+    filtered = filtered.filter(p => {
+      if (!p.currentOpeningHours) return false;
+      return p.currentOpeningHours.openNow === true;
+    });
+    if (filtered.length === 0 && allPlaces.length > 0) {
+      throw new Error('Found activities in this area but none are open right now. Try turning off the "Open now only" toggle.');
+    }
+  }
+
+  return filtered;
+}
+
+/** Generate a fun AI description via Groq */
+async function generateDescription(name, address) {
+  const prompt = `Write a fun, enthusiastic 2-3 sentence description for an activity venue called "${name}" located at "${address}". Be creative and make it sound like an exciting thing to go do. Don't use quotation marks around the venue name.`;
+
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${GROQ_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 200,
+        temperature: 0.8
+      })
+    });
+
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content?.trim() || 'A great spot for some fun!';
+  } catch {
+    return 'A great spot for some fun!';
+  }
+}
+
+/** Format star rating display */
+function formatRating(rating, count) {
+  if (!rating) return '';
+  const stars = '★'.repeat(Math.round(rating)) + '☆'.repeat(5 - Math.round(rating));
+  const countStr = count ? ` (${count})` : '';
+  return `${stars} ${rating.toFixed(1)}${countStr}`;
+}
+
+// --- Main ---
+
+generateBtn.addEventListener('click', async () => {
+  const useGeo = useMyLocationToggle.checked;
+  const mode = locationMode.value;
+  const zip = zipcodeInput.value.trim();
+  const ddStr = ddInput.value.trim();
+
+  if (!useGeo && mode === 'zip' && !zip) {
+    showError('Please enter a zipcode.');
+    return;
+  }
+  if (!useGeo && mode === 'dd' && !ddStr) {
+    showError('Please enter coordinates.');
+    return;
+  }
+
+  clearError();
+  resultCard.classList.remove('active');
+  setLoading(true);
+
+  try {
+    // 1. Determine search center
+    let searchCenter;
+    let userLocation = null;
+
+    if (useGeo) {
+      geoStatus.textContent = 'Detecting your location...';
+      const loc = await getBrowserLocation();
+      userLocation = loc;
+      searchCenter = loc;
+      geoStatus.textContent = `Location: ${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`;
+    } else if (mode === 'dd') {
+      userLocation = parseDD(ddStr);
+      if (!userLocation) {
+        throw new Error('Could not parse coordinates. Use format like: 34.052235, -118.243683');
+      }
+      searchCenter = userLocation;
+    } else {
+      searchCenter = await geocodeZipcode(zip);
+    }
+
+    // 2. Get selected activity types from all grids
+    const activityTypes = [
+      ...document.querySelectorAll('#activeGrid input:checked'),
+      ...document.querySelectorAll('#entertainmentGrid input:checked'),
+      ...document.querySelectorAll('#outdoorsGrid input:checked'),
+      ...document.querySelectorAll('#cultureGrid input:checked')
+    ].map(cb => cb.value);
+
+    // 3. Get radius
+    const radiusMeters = +distanceSelect.value;
+
+    // 4. Get open now preference
+    const openNow = openNowCheckbox.checked;
+
+    // 5. Search nearby activities
+    let places = await searchNearby(searchCenter.lat, searchCenter.lng, radiusMeters, activityTypes, openNow);
+
+    if (places.length === 0) {
+      throw new Error('No results found. Try expanding your search distance or removing filters.');
+    }
+
+    // 6. Pick a random activity
+    const place = places[Math.floor(Math.random() * places.length)];
+    const name = place.displayName?.text || 'Unknown Activity';
+    const address = place.formattedAddress || '';
+    const rating = place.rating;
+    const ratingCount = place.userRatingCount;
+    const isOpen = place.currentOpeningHours?.openNow;
+    const mapsUrl = place.googleMapsUri || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + ' ' + address)}`;
+
+    // 7. Calculate distance if user provided coordinates
+    let distText = '';
+    if (userLocation && place.location) {
+      const dist = haversine(userLocation.lat, userLocation.lng, place.location.latitude, place.location.longitude);
+      distText = `~${dist.toFixed(1)} miles from you`;
+    }
+
+    // 8. Display result
+    resultName.textContent = name;
+    resultAddress.textContent = address;
+    resultRating.innerHTML = formatRating(rating, ratingCount);
+    resultOpenStatus.className = isOpen ? 'open' : 'closed';
+    resultOpenStatus.textContent = isOpen === true ? ' · Open Now' : isOpen === false ? ' · Closed' : '';
+
+    // Today's hours
+    const weekdays = place.currentOpeningHours?.weekdayDescriptions;
+    if (weekdays && weekdays.length === 7) {
+      const todayIndex = (new Date().getDay() + 6) % 7;
+      const todayLine = weekdays[todayIndex];
+      const colonPos = todayLine.indexOf(':');
+      resultHours.textContent = colonPos !== -1 ? "Today's Hours: " + todayLine.substring(colonPos + 1).trim() : todayLine;
+    } else {
+      resultHours.textContent = '';
+    }
+
+    resultDistance.textContent = distText;
+    resultMaps.href = mapsUrl;
+    if (place.websiteUri) {
+      resultWebsite.href = place.websiteUri;
+      resultWebsite.style.display = '';
+    } else {
+      resultWebsite.style.display = 'none';
+    }
+    resultDesc.textContent = 'Generating description...';
+    resultDesc.classList.add('loading');
+    resultCard.classList.add('active');
+
+    setLoading(false);
+
+    // 9. Generate AI description (non-blocking for UI)
+    const desc = await generateDescription(name, address);
+    resultDesc.textContent = desc;
+    resultDesc.classList.remove('loading');
+
+  } catch (err) {
+    setLoading(false);
+    showError(err.message);
+  }
+});
+
+// Allow Enter key on inputs
+zipcodeInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') generateBtn.click();
+});
+ddInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') generateBtn.click();
+});
+
+// Toggle "Use my location" mode
+useMyLocationToggle.addEventListener('change', () => {
+  if (useMyLocationToggle.checked) {
+    locationModeField.style.display = 'none';
+    zipField.style.display = 'none';
+    ddField.style.display = 'none';
+    geoField.style.display = '';
+    geoStatus.textContent = 'Click Generate to detect your location';
+    distanceSelect.disabled = false;
+  } else {
+    locationModeField.style.display = '';
+    geoField.style.display = 'none';
+    const isDD = locationMode.value === 'dd';
+    zipField.style.display = isDD ? 'none' : '';
+    ddField.style.display = isDD ? '' : 'none';
+    distanceSelect.disabled = !isDD;
+  }
+});
+
+// Switch between zipcode and DD mode
+locationMode.addEventListener('change', () => {
+  if (useMyLocationToggle.checked) return;
+  const isDD = locationMode.value === 'dd';
+  zipField.style.display = isDD ? 'none' : '';
+  ddField.style.display = isDD ? '' : 'none';
+  distanceSelect.disabled = !isDD;
+  zipcodeInput.value = '';
+  ddInput.value = '';
+});
+</script>
+
+</body>
+</html>
