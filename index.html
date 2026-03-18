@@ -533,7 +533,7 @@
         <label><input type="checkbox" data-mode="type" value="fitness_center"> Fitness / Gym</label>
         <label><input type="checkbox" data-mode="type" value="swimming_pool"> Swimming</label>
         <label><input type="checkbox" data-mode="text" value="yoga pilates studio"> Yoga / Pilates</label>
-        <label><input type="checkbox" data-mode="text" value="cycling bike rental"> Cycling</label>
+        <label><input type="checkbox" data-mode="text" value="cycling studio bike rental"> Cycling</label>
         <label><input type="checkbox" data-mode="text" value="running track"> Running / Track</label>
         <label><input type="checkbox" data-mode="text" value="boxing gym"> Boxing</label>
       </div>
@@ -623,8 +623,8 @@
         <label><input type="checkbox" data-mode="type" value="marina"> Boating / Marina</label>
         <label><input type="checkbox" data-mode="text" value="kayak canoe rental"> Kayaking / Canoeing</label>
         <label><input type="checkbox" data-mode="text" value="jet ski rental"> Jet Skiing</label>
-        <label><input type="checkbox" data-mode="text" value="fishing charter bait shop"> Fishing</label>
-        <label><input type="checkbox" data-mode="text" value="surfing lessons surf rental"> Surfing</label>
+        <label><input type="checkbox" data-mode="text" value="fishing charter fishing pier"> Fishing</label>
+        <label><input type="checkbox" data-mode="text" value="surfing lessons surf school"> Surfing</label>
         <label><input type="checkbox" data-mode="text" value="scuba diving snorkeling"> Scuba / Snorkeling</label>
       </div>
 
@@ -637,7 +637,7 @@
 
       <div class="subcategory-label">Adventure</div>
       <div class="activity-grid">
-        <label><input type="checkbox" data-mode="text" value="camping glamping"> Camping / Glamping</label>
+        <label><input type="checkbox" data-mode="text" value="campground glamping site"> Camping / Glamping</label>
         <label><input type="checkbox" data-mode="text" value="off road ATV rental"> Off-Roading / ATV</label>
         <label><input type="checkbox" data-mode="text" value="horseback riding"> Horseback Riding</label>
       </div>
@@ -684,6 +684,37 @@
     </div>
   </div>
 
+  <!-- ========== SHOPPING ========== -->
+  <div class="category" id="catShopping">
+    <div class="category-header">
+      <span class="category-title">Shopping</span>
+      <span class="category-count"></span>
+      <div class="category-toggle" onclick="event.stopPropagation()">
+        <span>Only</span>
+        <label><input type="checkbox" class="cat-only-toggle"><span class="slider"></span></label>
+      </div>
+      <span class="category-chevron">&#9654;</span>
+    </div>
+    <div class="category-body">
+      <div class="subcategory-label">Retail & Malls</div>
+      <div class="activity-grid">
+        <label><input type="checkbox" data-mode="type" value="shopping_mall"> Shopping Malls</label>
+        <label><input type="checkbox" data-mode="type" value="department_store"> Department Stores</label>
+        <label><input type="checkbox" data-mode="type" value="outlet_store"> Outlet Stores</label>
+        <label><input type="checkbox" data-mode="text" value="thrift store vintage shop"> Thrift / Vintage</label>
+      </div>
+
+      <div class="subcategory-label">Specialty</div>
+      <div class="activity-grid">
+        <label><input type="checkbox" data-mode="type" value="book_store"> Bookstores</label>
+        <label><input type="checkbox" data-mode="type" value="sporting_goods_store"> Sporting Goods</label>
+        <label><input type="checkbox" data-mode="text" value="record store vinyl shop"> Record Stores</label>
+        <label><input type="checkbox" data-mode="text" value="antique store"> Antique Stores</label>
+        <label><input type="checkbox" data-mode="text" value="farmers market flea market"> Markets</label>
+      </div>
+    </div>
+  </div>
+
   <!-- Generate Button -->
   <button class="btn" id="generateBtn">Generate</button>
 
@@ -726,6 +757,22 @@ const DEFAULT_ACTIVITY_TYPES = [
   'national_park', 'ski_resort', 'marina', 'dog_park', 'museum',
   'art_gallery', 'zoo', 'spa', 'cultural_center', 'tourist_attraction',
   'aquarium', 'library'
+];
+
+// Store types to exclude from non-shopping searches (Google Places API types)
+const STORE_EXCLUDED_TYPES = [
+  'store', 'shopping_mall', 'department_store', 'sporting_goods_store',
+  'outlet_store', 'book_store', 'clothing_store', 'convenience_store',
+  'discount_store', 'electronics_store', 'furniture_store', 'gift_shop',
+  'grocery_store', 'hardware_store', 'home_goods_store', 'home_improvement_store',
+  'jewelry_store', 'liquor_store', 'pet_store', 'shoe_store',
+  'supermarket', 'wholesaler'
+];
+
+// Keywords in place names that indicate a store (for client-side filtering)
+const STORE_NAME_KEYWORDS = [
+  'store', 'shop', 'supply', 'supplies', 'retail', 'depot', 'warehouse',
+  'outlet', 'mart', 'superstore', 'megastore', 'emporium'
 ];
 
 const FIELD_MASK = [
@@ -887,7 +934,23 @@ async function searchNearbyByType(lat, lng, radiusMeters, types) {
 }
 
 /** Search using Google Places Text Search for activities without direct types */
-async function searchByText(query, lat, lng, radiusMeters) {
+async function searchByText(query, lat, lng, radiusMeters, excludeStores = false) {
+  const body = {
+    textQuery: query,
+    locationBias: {
+      circle: {
+        center: { latitude: lat, longitude: lng },
+        radius: radiusMeters
+      }
+    },
+    maxResultCount: 10,
+    languageCode: 'en'
+  };
+
+  if (excludeStores) {
+    body.excludedTypes = STORE_EXCLUDED_TYPES;
+  }
+
   const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
     method: 'POST',
     headers: {
@@ -895,17 +958,7 @@ async function searchByText(query, lat, lng, radiusMeters) {
       'X-Goog-Api-Key': GOOGLE_API_KEY,
       'X-Goog-FieldMask': FIELD_MASK
     },
-    body: JSON.stringify({
-      textQuery: query,
-      locationBias: {
-        circle: {
-          center: { latitude: lat, longitude: lng },
-          radius: radiusMeters
-        }
-      },
-      maxResultCount: 10,
-      languageCode: 'en'
-    })
+    body: JSON.stringify(body)
   });
   const data = await res.json();
   return data.places || [];
@@ -922,9 +975,17 @@ function deduplicate(places) {
   });
 }
 
-/** Filter places: remove closed businesses, optionally filter open now */
-function filterPlaces(places, openNow, searchCenter, radiusMeters) {
+/** Filter places: remove closed businesses, optionally filter stores and open now */
+function filterPlaces(places, openNow, searchCenter, radiusMeters, excludeStores = false) {
   let filtered = places.filter(p => !p.businessStatus || p.businessStatus === 'OPERATIONAL');
+
+  // Exclude stores by name keywords (safety net for results that slip through API filtering)
+  if (excludeStores) {
+    filtered = filtered.filter(p => {
+      const name = (p.displayName?.text || '').toLowerCase();
+      return !STORE_NAME_KEYWORDS.some(kw => name.includes(kw));
+    });
+  }
 
   // Filter text search results that may be outside radius
   if (searchCenter) {
@@ -1103,6 +1164,11 @@ generateBtn.addEventListener('click', async () => {
 
     const nothingSelected = typeSelections.length === 0 && textSelections.length === 0;
 
+    // Determine if any Shopping selections are active — if so, don't exclude stores
+    const isShoppingSearch = (onlyCat && onlyCat.id === 'catShopping') ||
+      (!onlyCat && document.querySelectorAll('#catShopping .activity-grid input[type="checkbox"]:checked').length > 0);
+    const excludeStores = !isShoppingSearch;
+
     // 3. Get radius
     const radiusMeters = +distanceSelect.value;
 
@@ -1113,14 +1179,14 @@ generateBtn.addEventListener('click', async () => {
     const searchPromises = [];
 
     if (nothingSelected) {
-      // Default: search with all default types
+      // Default: search with all default types (no shopping types)
       searchPromises.push(searchNearbyByType(searchCenter.lat, searchCenter.lng, radiusMeters, DEFAULT_ACTIVITY_TYPES));
     } else {
       if (typeSelections.length > 0) {
         searchPromises.push(searchNearbyByType(searchCenter.lat, searchCenter.lng, radiusMeters, typeSelections));
       }
       for (const query of textSelections) {
-        searchPromises.push(searchByText(query, searchCenter.lat, searchCenter.lng, radiusMeters));
+        searchPromises.push(searchByText(query, searchCenter.lat, searchCenter.lng, radiusMeters, excludeStores));
       }
     }
 
@@ -1128,7 +1194,7 @@ generateBtn.addEventListener('click', async () => {
     const mergedPlaces = deduplicate(allResults.flat());
 
     // 6. Filter
-    let places = filterPlaces(mergedPlaces, openNow, searchCenter, radiusMeters);
+    let places = filterPlaces(mergedPlaces, openNow, searchCenter, radiusMeters, excludeStores);
 
     if (places.length === 0) {
       throw new Error('No results found. Try expanding your search distance or removing filters.');
