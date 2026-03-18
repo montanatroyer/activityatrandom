@@ -932,7 +932,11 @@ async function geocodeZipcode(zip) {
 }
 
 /** Search nearby using Google Places type-based Nearby Search */
+const NEARBY_MAX_RADIUS = 50000; // Google API max for Nearby Search
 async function searchNearbyByType(lat, lng, radiusMeters, types) {
+  // Cap radius at API max — for larger radii, use searchByText instead
+  const cappedRadius = Math.min(radiusMeters, NEARBY_MAX_RADIUS);
+
   const headers = {
     'Content-Type': 'application/json',
     'X-Goog-Api-Key': GOOGLE_API_KEY,
@@ -943,7 +947,7 @@ async function searchNearbyByType(lat, lng, radiusMeters, types) {
     locationRestriction: {
       circle: {
         center: { latitude: lat, longitude: lng },
-        radius: radiusMeters
+        radius: cappedRadius
       }
     },
     maxResultCount: 20,
@@ -1222,13 +1226,22 @@ generateBtn.addEventListener('click', async () => {
 
     // 5. Search — run type-based and text-based searches in parallel
     const searchPromises = [];
+    const wideSearch = radiusMeters > NEARBY_MAX_RADIUS;
 
     if (nothingSelected) {
       // Default: search with all default types (no shopping types)
       searchPromises.push(searchNearbyByType(searchCenter.lat, searchCenter.lng, radiusMeters, DEFAULT_ACTIVITY_TYPES));
     } else {
       if (typeSelections.length > 0) {
+        // Always run Nearby Search (capped at 50km) for type-based results
         searchPromises.push(searchNearbyByType(searchCenter.lat, searchCenter.lng, radiusMeters, typeSelections));
+        // For wide radius, also run Text Search for each type to cover beyond 50km
+        if (wideSearch) {
+          for (const t of typeSelections) {
+            const label = t.replace(/_/g, ' '); // e.g. "ski_resort" → "ski resort"
+            searchPromises.push(searchByText(label, searchCenter.lat, searchCenter.lng, radiusMeters, excludeStores));
+          }
+        }
       }
       for (const query of textSelections) {
         searchPromises.push(searchByText(query, searchCenter.lat, searchCenter.lng, radiusMeters, excludeStores));
