@@ -127,6 +127,57 @@
     display: none;
   }
 
+  .category-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-left: auto;
+    margin-right: 0.6rem;
+  }
+
+  .category-toggle label {
+    position: relative;
+    width: 36px;
+    height: 20px;
+    cursor: pointer;
+    margin: 0;
+  }
+
+  .category-toggle label input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .category-toggle label .slider {
+    position: absolute;
+    inset: 0;
+    background: #333;
+    border-radius: 20px;
+    transition: background 0.2s;
+  }
+
+  .category-toggle label .slider::before {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    left: 3px;
+    bottom: 3px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.2s;
+  }
+
+  .category-toggle label input:checked + .slider { background: #06b6d4; }
+  .category-toggle label input:checked + .slider::before { transform: translateX(16px); }
+
+  .category-toggle span {
+    font-size: 0.7rem;
+    color: #666;
+    white-space: nowrap;
+  }
+
   .category-chevron {
     color: #555;
     font-size: 0.7rem;
@@ -135,6 +186,14 @@
 
   .category.open .category-chevron {
     transform: rotate(90deg);
+  }
+
+  .category.cat-only-active {
+    border-color: #06b6d4;
+  }
+
+  .category.cat-only-active .category-title {
+    color: #06b6d4;
   }
 
   .category-body {
@@ -442,6 +501,10 @@
     <div class="category-header">
       <span class="category-title">Active & Sports</span>
       <span class="category-count"></span>
+      <div class="category-toggle" onclick="event.stopPropagation()">
+        <span>Only</span>
+        <label><input type="checkbox" class="cat-only-toggle"><span class="slider"></span></label>
+      </div>
       <span class="category-chevron">&#9654;</span>
     </div>
     <div class="category-body">
@@ -499,6 +562,10 @@
     <div class="category-header">
       <span class="category-title">Entertainment</span>
       <span class="category-count"></span>
+      <div class="category-toggle" onclick="event.stopPropagation()">
+        <span>Only</span>
+        <label><input type="checkbox" class="cat-only-toggle"><span class="slider"></span></label>
+      </div>
       <span class="category-chevron">&#9654;</span>
     </div>
     <div class="category-body">
@@ -534,6 +601,10 @@
     <div class="category-header">
       <span class="category-title">Outdoors</span>
       <span class="category-count"></span>
+      <div class="category-toggle" onclick="event.stopPropagation()">
+        <span>Only</span>
+        <label><input type="checkbox" class="cat-only-toggle"><span class="slider"></span></label>
+      </div>
       <span class="category-chevron">&#9654;</span>
     </div>
     <div class="category-body">
@@ -578,6 +649,10 @@
     <div class="category-header">
       <span class="category-title">Culture & Relaxation</span>
       <span class="category-count"></span>
+      <div class="category-toggle" onclick="event.stopPropagation()">
+        <span>Only</span>
+        <label><input type="checkbox" class="cat-only-toggle"><span class="slider"></span></label>
+      </div>
       <span class="category-chevron">&#9654;</span>
     </div>
     <div class="category-body">
@@ -915,13 +990,40 @@ document.querySelectorAll('.category-header').forEach(header => {
   });
 });
 
+// --- "Only" toggles: mutual exclusivity ---
+document.querySelectorAll('.cat-only-toggle').forEach(toggle => {
+  toggle.addEventListener('change', () => {
+    if (toggle.checked) {
+      // Turn off all other "Only" toggles
+      document.querySelectorAll('.cat-only-toggle').forEach(other => {
+        if (other !== toggle) other.checked = false;
+      });
+      // Highlight the active category
+      document.querySelectorAll('.category').forEach(c => c.classList.remove('cat-only-active'));
+      toggle.closest('.category').classList.add('cat-only-active');
+    } else {
+      toggle.closest('.category').classList.remove('cat-only-active');
+    }
+  });
+});
+
+/** Get the active "Only" category, or null if none */
+function getOnlyCategory() {
+  const active = document.querySelector('.cat-only-toggle:checked');
+  return active ? active.closest('.category') : null;
+}
+
 // --- Update selected count badges ---
 function updateCategoryCounts() {
   document.querySelectorAll('.category').forEach(cat => {
-    const count = cat.querySelectorAll('input[type="checkbox"]:checked').length;
+    const onlyToggle = cat.querySelector('.cat-only-toggle');
+    const individualCount = cat.querySelectorAll('.activity-grid input[type="checkbox"]:checked').length;
     const badge = cat.querySelector('.category-count');
-    if (count > 0) {
-      badge.textContent = `${count} selected`;
+    if (onlyToggle && onlyToggle.checked) {
+      badge.textContent = 'ALL';
+      badge.style.display = '';
+    } else if (individualCount > 0) {
+      badge.textContent = `${individualCount} selected`;
       badge.style.display = '';
     } else {
       badge.style.display = 'none';
@@ -975,15 +1077,28 @@ generateBtn.addEventListener('click', async () => {
     }
 
     // 2. Collect selected activities, split by search mode
-    const allChecked = document.querySelectorAll('.category input[type="checkbox"]:checked');
     const typeSelections = [];
     const textSelections = [];
-    for (const cb of allChecked) {
-      if (cb.dataset.mode === 'text') {
-        textSelections.push(cb.value);
-      } else {
-        typeSelections.push(cb.value);
-      }
+
+    const onlyCat = getOnlyCategory();
+    if (onlyCat) {
+      // "Only" toggle is active — use ALL activities in that category
+      onlyCat.querySelectorAll('.activity-grid input[type="checkbox"]').forEach(cb => {
+        if (cb.dataset.mode === 'text') {
+          textSelections.push(cb.value);
+        } else {
+          typeSelections.push(cb.value);
+        }
+      });
+    } else {
+      // Use individually checked activities across all categories
+      document.querySelectorAll('.category .activity-grid input[type="checkbox"]:checked').forEach(cb => {
+        if (cb.dataset.mode === 'text') {
+          textSelections.push(cb.value);
+        } else {
+          typeSelections.push(cb.value);
+        }
+      });
     }
 
     const nothingSelected = typeSelections.length === 0 && textSelections.length === 0;
