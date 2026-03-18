@@ -480,6 +480,8 @@
         <option value="16093" selected>0-10 miles</option>
         <option value="32187">0-20 miles</option>
         <option value="50000">0-30 miles</option>
+        <option value="96561">0-60 miles</option>
+        <option value="160934">0-100 miles</option>
       </select>
     </div>
   </div>
@@ -491,6 +493,15 @@
       <span class="slider"></span>
     </label>
     <span>Open now only</span>
+  </div>
+
+  <!-- Full Day Activity Toggle -->
+  <div class="toggle-row">
+    <label class="toggle">
+      <input type="checkbox" id="fullDay">
+      <span class="slider"></span>
+    </label>
+    <span>Full day activity</span>
   </div>
 
   <!-- Activity Filters -->
@@ -775,6 +786,31 @@ const STORE_NAME_KEYWORDS = [
   'outlet', 'mart', 'superstore', 'megastore', 'emporium'
 ];
 
+// Full day activity searches — curated types + text queries for 2+ hour activities
+const FULL_DAY_TYPES = [
+  'ski_resort', 'national_park', 'amusement_park', 'water_park',
+  'hiking_area', 'zoo', 'aquarium', 'marina'
+];
+const FULL_DAY_TEXT_QUERIES = [
+  'white water rafting',
+  'paragliding',
+  'skydiving',
+  'horseback riding trail ride',
+  'kayaking canoeing trip',
+  'scuba diving snorkeling tour',
+  'hot springs resort',
+  'scenic lake recreation',
+  'wildlife refuge',
+  'state park recreation area',
+  'winery tour vineyard tasting',
+  'ziplining canopy tour',
+  'river float trip',
+  'fishing charter guided trip',
+  'campground glamping',
+  'off road ATV tour'
+];
+const FULL_DAY_RADIUS = 160934; // 100 miles in meters
+
 const FIELD_MASK = [
   'places.displayName',
   'places.formattedAddress',
@@ -799,6 +835,7 @@ const zipcodeInput = document.getElementById('zipcode');
 const ddInput = document.getElementById('dd');
 const distanceSelect = document.getElementById('distance');
 const openNowCheckbox = document.getElementById('openNow');
+const fullDayCheckbox = document.getElementById('fullDay');
 const generateBtn = document.getElementById('generateBtn');
 const spinner = document.getElementById('spinner');
 const errorDiv = document.getElementById('error');
@@ -1140,9 +1177,15 @@ generateBtn.addEventListener('click', async () => {
     // 2. Collect selected activities, split by search mode
     const typeSelections = [];
     const textSelections = [];
+    const isFullDay = fullDayCheckbox.checked;
 
-    const onlyCat = getOnlyCategory();
-    if (onlyCat) {
+    const onlyCat = isFullDay ? null : getOnlyCategory();
+
+    if (isFullDay) {
+      // Full day mode — use curated full-day lists, ignore category selections
+      typeSelections.push(...FULL_DAY_TYPES);
+      textSelections.push(...FULL_DAY_TEXT_QUERIES);
+    } else if (onlyCat) {
       // "Only" toggle is active — use ALL activities in that category
       onlyCat.querySelectorAll('.activity-grid input[type="checkbox"]').forEach(cb => {
         if (cb.dataset.mode === 'text') {
@@ -1165,15 +1208,17 @@ generateBtn.addEventListener('click', async () => {
     const nothingSelected = typeSelections.length === 0 && textSelections.length === 0;
 
     // Determine if any Shopping selections are active — if so, don't exclude stores
-    const isShoppingSearch = (onlyCat && onlyCat.id === 'catShopping') ||
-      (!onlyCat && document.querySelectorAll('#catShopping .activity-grid input[type="checkbox"]:checked').length > 0);
+    const isShoppingSearch = !isFullDay && (
+      (onlyCat && onlyCat.id === 'catShopping') ||
+      (!onlyCat && document.querySelectorAll('#catShopping .activity-grid input[type="checkbox"]:checked').length > 0)
+    );
     const excludeStores = !isShoppingSearch;
 
-    // 3. Get radius
-    const radiusMeters = +distanceSelect.value;
+    // 3. Get radius (full day overrides to 100 miles)
+    const radiusMeters = isFullDay ? FULL_DAY_RADIUS : +distanceSelect.value;
 
-    // 4. Get open now preference
-    const openNow = openNowCheckbox.checked;
+    // 4. Get open now preference (full day ignores open-now since many are outdoor/seasonal)
+    const openNow = isFullDay ? false : openNowCheckbox.checked;
 
     // 5. Search — run type-based and text-based searches in parallel
     const searchPromises = [];
@@ -1294,6 +1339,41 @@ locationMode.addEventListener('change', () => {
   distanceSelect.disabled = !isDD;
   zipcodeInput.value = '';
   ddInput.value = '';
+});
+
+// Toggle "Full day activity" mode
+let savedDistance = null;
+let savedOpenNow = null;
+fullDayCheckbox.addEventListener('change', () => {
+  if (fullDayCheckbox.checked) {
+    // Save current values, then override
+    savedDistance = distanceSelect.value;
+    savedOpenNow = openNowCheckbox.checked;
+    distanceSelect.value = '160934';
+    distanceSelect.disabled = true;
+    openNowCheckbox.checked = false;
+    openNowCheckbox.closest('.toggle-row').style.opacity = '0.4';
+    openNowCheckbox.closest('.toggle-row').style.pointerEvents = 'none';
+    // Disable category toggles and checkboxes (full day overrides them)
+    document.querySelectorAll('.category').forEach(c => {
+      c.style.opacity = '0.4';
+      c.style.pointerEvents = 'none';
+    });
+  } else {
+    // Restore saved values
+    if (savedDistance !== null) distanceSelect.value = savedDistance;
+    if (savedOpenNow !== null) openNowCheckbox.checked = savedOpenNow;
+    // Re-enable distance based on location mode
+    const useGeo = useMyLocationToggle.checked;
+    const isDD = locationMode.value === 'dd';
+    distanceSelect.disabled = !(useGeo || isDD);
+    openNowCheckbox.closest('.toggle-row').style.opacity = '';
+    openNowCheckbox.closest('.toggle-row').style.pointerEvents = '';
+    document.querySelectorAll('.category').forEach(c => {
+      c.style.opacity = '';
+      c.style.pointerEvents = '';
+    });
+  }
 });
 </script>
 
