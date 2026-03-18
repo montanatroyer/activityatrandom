@@ -757,8 +757,7 @@
 </div>
 
 <script>
-const GOOGLE_API_KEY = 'GOOGLE_API_KEY_REMOVED';
-const GROQ_API_KEY = 'GROQ_API_KEY_REMOVED';
+// API keys are stored in Vercel environment variables — calls go through /api/* proxies
 
 // Default activity types when no filters are selected (type-based only for efficiency)
 const DEFAULT_ACTIVITY_TYPES = [
@@ -810,18 +809,6 @@ const FULL_DAY_TEXT_QUERIES = [
   'off road ATV tour'
 ];
 const FULL_DAY_RADIUS = 160934; // 100 miles in meters
-
-const FIELD_MASK = [
-  'places.displayName',
-  'places.formattedAddress',
-  'places.rating',
-  'places.userRatingCount',
-  'places.currentOpeningHours',
-  'places.location',
-  'places.googleMapsUri',
-  'places.businessStatus',
-  'places.websiteUri'
-].join(',');
 
 // --- DOM refs ---
 const locationMode = document.getElementById('locationMode');
@@ -914,14 +901,13 @@ function getBrowserLocation() {
 }
 
 async function geocodeZipcode(zip) {
-  const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
+  const res = await fetch('/api/places-text', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Key': GOOGLE_API_KEY,
-      'X-Goog-FieldMask': 'places.location'
-    },
-    body: JSON.stringify({ textQuery: `zipcode ${zip}, USA` })
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      textQuery: `zipcode ${zip}, USA`,
+      fieldMask: 'places.location'
+    })
   });
   const data = await res.json();
   if (!data.places || !data.places.length) {
@@ -937,12 +923,6 @@ async function searchNearbyByType(lat, lng, radiusMeters, types) {
   // Cap radius at API max — for larger radii, use searchByText instead
   const cappedRadius = Math.min(radiusMeters, NEARBY_MAX_RADIUS);
 
-  const headers = {
-    'Content-Type': 'application/json',
-    'X-Goog-Api-Key': GOOGLE_API_KEY,
-    'X-Goog-FieldMask': FIELD_MASK
-  };
-
   const baseBody = {
     locationRestriction: {
       circle: {
@@ -954,13 +934,14 @@ async function searchNearbyByType(lat, lng, radiusMeters, types) {
     languageCode: 'en'
   };
 
+  const fetchOpts = { method: 'POST', headers: { 'Content-Type': 'application/json' } };
   const fetches = [
-    fetch('https://places.googleapis.com/v1/places:searchNearby', {
-      method: 'POST', headers,
+    fetch('/api/places-nearby', {
+      ...fetchOpts,
       body: JSON.stringify({ ...baseBody, includedTypes: types, rankPreference: 'POPULARITY' })
     }),
-    fetch('https://places.googleapis.com/v1/places:searchNearby', {
-      method: 'POST', headers,
+    fetch('/api/places-nearby', {
+      ...fetchOpts,
       body: JSON.stringify({ ...baseBody, includedTypes: types, rankPreference: 'DISTANCE' })
     })
   ];
@@ -992,13 +973,9 @@ async function searchByText(query, lat, lng, radiusMeters, excludeStores = false
     body.excludedTypes = STORE_EXCLUDED_TYPES;
   }
 
-  const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
+  const res = await fetch('/api/places-text', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Key': GOOGLE_API_KEY,
-      'X-Goog-FieldMask': FIELD_MASK
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
   const data = await res.json();
@@ -1058,12 +1035,9 @@ async function getFullDayIdeas(locationDesc) {
   const prompt = `In ${locationDesc}, name 8 highly recommended full day activities or destinations that take 2+ hours. Include a mix of outdoor adventures, historical sites, scenic spots, and unique local experiences that someone would drive up to 100 miles for. Return ONLY the place or activity names, one per line, no numbering or extra text.`;
 
   try {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    const res = await fetch('/api/groq', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GROQ_API_KEY}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'llama-3.3-70b-versatile',
         messages: [{ role: 'user', content: prompt }],
@@ -1087,12 +1061,9 @@ async function generateDescription(name, address) {
   const prompt = `Write a fun, enthusiastic 2-3 sentence description for an activity venue called "${name}" located at "${address}". Be creative and make it sound like an exciting thing to go do. Don't use quotation marks around the venue name.`;
 
   try {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    const res = await fetch('/api/groq', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GROQ_API_KEY}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'llama-3.3-70b-versatile',
         messages: [{ role: 'user', content: prompt }],
