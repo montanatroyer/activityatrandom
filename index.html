@@ -842,29 +842,6 @@ const STORE_NAME_KEYWORDS = [
   'outlet', 'mart', 'superstore', 'megastore', 'emporium'
 ];
 
-// Full day activity searches — curated types + text queries for 2+ hour activities
-const FULL_DAY_TYPES = [
-  'ski_resort', 'national_park', 'amusement_park', 'water_park',
-  'hiking_area', 'zoo', 'aquarium', 'marina'
-];
-const FULL_DAY_TEXT_QUERIES = [
-  'white water rafting',
-  'paragliding',
-  'skydiving',
-  'horseback riding trail ride',
-  'kayaking canoeing trip',
-  'scuba diving snorkeling tour',
-  'hot springs resort',
-  'scenic lake recreation',
-  'wildlife refuge',
-  'state park recreation area',
-  'winery tour vineyard tasting',
-  'ziplining canopy tour',
-  'river float trip',
-  'fishing charter guided trip',
-  'campground glamping',
-  'off road ATV tour'
-];
 const FULL_DAY_RADIUS = 160934; // 100 miles in meters
 
 // --- DOM refs ---
@@ -908,36 +885,72 @@ if (DEV_MODE) {
   });
 }
 
-function renderDevPanel(labeledResults, mergedPlaces, filteredPlaces, searchCenter) {
+function renderDevPanel(devLog) {
   if (!DEV_MODE) return;
-  const filteredIds = new Set(filteredPlaces.map(p => p.googleMapsUri || p.displayName?.text));
 
-  let html = '<h3>Search Results Debug</h3>';
-  html += `<div class="dev-stat">Queries: ${labeledResults.length} | Raw total: ${labeledResults.reduce((s, r) => s + r.places.length, 0)} | Deduplicated: ${mergedPlaces.length} | After filters: ${filteredPlaces.length}</div>`;
+  let html = '<h3>LLM-First Search Debug</h3>';
 
-  for (const { label, places } of labeledResults) {
-    html += `<details class="dev-section"${places.length > 0 ? ' open' : ''}>`;
-    html += `<summary>${label} (${places.length})</summary>`;
-    for (const p of places) {
-      const name = p.displayName?.text || 'Unknown';
-      const id = p.googleMapsUri || name;
-      const inFiltered = filteredIds.has(id);
-      let meta = '';
-      if (p.rating) meta += p.rating.toFixed(1);
-      if (p.location && searchCenter) {
-        const dist = haversine(searchCenter.lat, searchCenter.lng, p.location.latitude, p.location.longitude);
-        meta += (meta ? ' | ' : '') + dist.toFixed(1) + 'mi';
-      }
-      const openStatus = p.currentOpeningHours?.openNow;
-      if (openStatus === true) meta += ' | Open';
-      else if (openStatus === false) meta += ' | Closed';
-      html += `<div class="dev-place${inFiltered ? '' : ' filtered'}">`;
-      html += `<span class="dev-place-name">${name}</span>`;
-      html += `<span class="dev-place-meta">${meta}${inFiltered ? '' : ' [filtered out]'}</span>`;
+  // LLM Prompt
+  html += `<details class="dev-section" open>`;
+  html += `<summary>LLM Prompt</summary>`;
+  html += `<div style="color:#aaa;white-space:pre-wrap;font-size:0.75rem;padding:0.3rem;">${devLog.prompt || 'N/A'}</div>`;
+  html += `</details>`;
+
+  // LLM Suggestions
+  html += `<details class="dev-section" open>`;
+  html += `<summary>LLM Suggestions (${devLog.ideas.length})</summary>`;
+  for (const idea of devLog.ideas) {
+    const wasSkipped = devLog.skipped.find(s => s.idea === idea);
+    const wasPicked = devLog.picked === idea;
+    let cls = 'dev-place';
+    let meta = '';
+    if (wasPicked) { meta = 'SELECTED'; }
+    else if (wasSkipped) { cls += ' filtered'; meta = wasSkipped.reason; }
+    html += `<div class="${cls}">`;
+    html += `<span class="dev-place-name">${idea}</span>`;
+    if (meta) html += `<span class="dev-place-meta">${meta}</span>`;
+    html += `</div>`;
+  }
+  if (devLog.ideas.length === 0) html += '<div style="color:#555;">No suggestions returned</div>';
+  html += `</details>`;
+
+  // Selected suggestion + Google result
+  if (devLog.picked && devLog.googleResult) {
+    const p = devLog.googleResult;
+    html += `<details class="dev-section" open>`;
+    html += `<summary>Google Lookup: ${devLog.picked}</summary>`;
+    html += `<div style="color:#aaa;font-size:0.75rem;padding:0.3rem;">`;
+    html += `Name: ${p.displayName?.text || 'Unknown'}<br>`;
+    html += `Address: ${p.formattedAddress || 'N/A'}<br>`;
+    html += `Rating: ${p.rating || 'N/A'}<br>`;
+    html += `Open: ${p.currentOpeningHours?.openNow ?? 'Unknown'}`;
+    html += `</div>`;
+    html += `</details>`;
+  }
+
+  // Skipped suggestions
+  if (devLog.skipped.length > 0) {
+    html += `<details class="dev-section">`;
+    html += `<summary>Skipped (${devLog.skipped.length})</summary>`;
+    for (const s of devLog.skipped) {
+      html += `<div class="dev-place filtered">`;
+      html += `<span class="dev-place-name">${s.idea}</span>`;
+      html += `<span class="dev-place-meta">${s.reason}</span>`;
       html += `</div>`;
     }
-    if (places.length === 0) html += '<div style="color:#555;">No results</div>';
-    html += '</details>';
+    html += `</details>`;
+  }
+
+  // Fallback info
+  if (devLog.usedFallback) {
+    html += `<details class="dev-section" open>`;
+    html += `<summary>Google Fallback</summary>`;
+    html += `<div style="color:#ff4444;font-size:0.75rem;padding:0.3rem;">LLM suggestions exhausted — fell back to Google Places search</div>`;
+    if (devLog.fallbackResults) {
+      const { labeledResults, mergedPlaces, filteredPlaces } = devLog.fallbackResults;
+      html += `<div class="dev-stat">Queries: ${labeledResults.length} | Raw: ${labeledResults.reduce((s, r) => s + r.places.length, 0)} | Deduped: ${mergedPlaces.length} | Filtered: ${filteredPlaces.length}</div>`;
+    }
+    html += `</details>`;
   }
 
   devPanel.innerHTML = html;
@@ -1140,9 +1153,19 @@ function filterPlaces(places, openNow, searchCenter, radiusMeters, excludeStores
   return filtered;
 }
 
-/** Ask LLM for full-day activity ideas near a location */
-async function getFullDayIdeas(locationDesc) {
-  const prompt = `In ${locationDesc}, name 8 highly recommended full day activities or destinations that take 2+ hours. Include a mix of outdoor adventures, historical sites, scenic spots, and unique local experiences that someone would drive up to 100 miles for. Return ONLY the place or activity names, one per line, no numbering or extra text.`;
+/** Ask LLM for activity ideas near a location based on user filters */
+async function getActivityIdeas(locationDesc, filters) {
+  let prompt;
+
+  if (filters.isFullDay) {
+    prompt = `Suggest 20 unique full-day activities or destinations near ${locationDesc} that take 2+ hours and are worth driving up to 100 miles for. Include a mix of outdoor adventures, historical sites, scenic spots, and unique local experiences. Focus on things that are special or iconic to this area rather than generic activities found everywhere. Return ONLY the place or activity names, one per line, no numbering or extra text.`;
+  } else if (filters.onlyCategoryName) {
+    prompt = `Suggest 20 unique ${filters.onlyCategoryName.toLowerCase()} activities or places to visit near ${locationDesc}. Focus on things that are special or iconic to this area rather than generic activities found everywhere. Return ONLY the place or activity names, one per line, no numbering or extra text.`;
+  } else if (filters.selectedActivities.length > 0) {
+    prompt = `Suggest 20 unique activities or places to visit near ${locationDesc} focused on: ${filters.selectedActivities.join(', ')}. Focus on things that are special or iconic to this area rather than generic activities found everywhere. Return ONLY the place or activity names, one per line, no numbering or extra text.`;
+  } else {
+    prompt = `Suggest 20 unique, interesting activities or places to visit near ${locationDesc}. Focus on things that are special or iconic to this area rather than generic activities found everywhere. Include a mix of outdoor, cultural, entertainment, food & drink, and local attractions. Return ONLY the place or activity names, one per line, no numbering or extra text.`;
+  }
 
   try {
     const res = await fetch('/api/groq', {
@@ -1151,20 +1174,42 @@ async function getFullDayIdeas(locationDesc) {
       body: JSON.stringify({
         model: 'llama-3.3-70b-versatile',
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 300,
+        max_tokens: 600,
         temperature: 0.9
       })
     });
 
     const data = await res.json();
     const text = data.choices?.[0]?.message?.content?.trim() || '';
-    // Parse lines: strip numbering, bullets, dashes, filter empties
-    return text.split('\n')
+    const ideas = text.split('\n')
       .map(l => l.replace(/^[\d\-\.\)\*•]+\s*/, '').trim())
       .filter(l => l.length > 0 && l.length < 100);
-  } catch {
-    return [];
+    return { prompt, ideas };
+  } catch (e) {
+    console.error('getActivityIdeas failed:', e);
+    return { prompt, ideas: [] };
   }
+}
+
+/** Look up a specific place by name on Google Places */
+async function lookupPlace(name, lat, lng, radiusMeters) {
+  const res = await fetch('/api/places-text', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      textQuery: name,
+      locationBias: {
+        circle: {
+          center: { latitude: lat, longitude: lng },
+          radius: radiusMeters
+        }
+      },
+      maxResultCount: 1,
+      languageCode: 'en'
+    })
+  });
+  const data = await res.json();
+  return data.places || [];
 }
 
 async function generateDescription(name, address) {
@@ -1291,101 +1336,173 @@ generateBtn.addEventListener('click', async () => {
       searchCenter = await geocodeZipcode(zip);
     }
 
-    // 2. Collect selected activities, split by search mode
-    const typeSelections = [];
-    const textSelections = [];
+    // 2. Build filter object from UI state
     const isFullDay = fullDayCheckbox.checked;
-
     const onlyCat = isFullDay ? null : getOnlyCategory();
 
-    if (isFullDay) {
-      // Full day mode — ask LLM for local ideas first
-      const locationDesc = (!useGeo && mode === 'zip' && zip)
-        ? `zip code ${zip}`
-        : `coordinates ${searchCenter.lat.toFixed(4)}, ${searchCenter.lng.toFixed(4)}`;
-      const llmIdeas = await getFullDayIdeas(locationDesc);
-      if (llmIdeas.length > 0) {
-        // LLM returned ideas — use them as primary text searches
-        textSelections.push(...llmIdeas);
-        // Add type-based searches for extra coverage, skip hardcoded text queries
-        typeSelections.push(...FULL_DAY_TYPES);
-      } else {
-        // LLM failed — fall back to curated lists
-        typeSelections.push(...FULL_DAY_TYPES);
-        textSelections.push(...FULL_DAY_TEXT_QUERIES);
-      }
-    } else if (onlyCat) {
-      // "Only" toggle is active — use ALL activities in that category
-      onlyCat.querySelectorAll('.activity-grid input[type="checkbox"]').forEach(cb => {
-        if (cb.dataset.mode === 'text') {
-          textSelections.push(cb.value);
-        } else {
-          typeSelections.push(cb.value);
-        }
-      });
-    } else {
-      // Use individually checked activities across all categories
+    let onlyCategoryName = null;
+    if (onlyCat) {
+      onlyCategoryName = onlyCat.querySelector('.category-title').textContent;
+    }
+
+    const selectedActivities = [];
+    if (!isFullDay && !onlyCat) {
       document.querySelectorAll('.category .activity-grid input[type="checkbox"]:checked').forEach(cb => {
-        if (cb.dataset.mode === 'text') {
-          textSelections.push(cb.value);
-        } else {
-          typeSelections.push(cb.value);
-        }
+        selectedActivities.push(cb.parentElement.textContent.trim());
       });
     }
 
-    const nothingSelected = typeSelections.length === 0 && textSelections.length === 0;
-
-    // Determine if any Shopping selections are active — if so, don't exclude stores
-    const isShoppingSearch = !isFullDay && (
-      (onlyCat && onlyCat.id === 'catShopping') ||
-      (!onlyCat && document.querySelectorAll('#catShopping .activity-grid input[type="checkbox"]:checked').length > 0)
-    );
-    const excludeStores = !isShoppingSearch;
-
-    // 3. Get radius (full day overrides to 100 miles)
+    // 3. Get radius and open now preference
     const radiusMeters = isFullDay ? FULL_DAY_RADIUS : +distanceSelect.value;
-
-    // 4. Get open now preference (full day ignores open-now since many are outdoor/seasonal)
     const openNow = isFullDay ? false : openNowCheckbox.checked;
+    const radiusMiles = radiusMeters / 1609.34;
 
-    // 5. Search — run type-based and text-based searches in parallel
-    const labeledPromises = []; // { label, promise }
-    const wideSearch = radiusMeters > NEARBY_MAX_RADIUS;
+    // 4. Build location description for LLM
+    const locationDesc = (!useGeo && mode === 'zip' && zip)
+      ? `zip code ${zip}`
+      : `coordinates ${searchCenter.lat.toFixed(4)}, ${searchCenter.lng.toFixed(4)}`;
 
-    if (nothingSelected) {
-      labeledPromises.push({ label: 'Nearby: default types', promise: searchNearbyByType(searchCenter.lat, searchCenter.lng, radiusMeters, DEFAULT_ACTIVITY_TYPES) });
-    } else {
-      if (typeSelections.length > 0) {
-        labeledPromises.push({ label: 'Nearby: ' + typeSelections.join(', '), promise: searchNearbyByType(searchCenter.lat, searchCenter.lng, radiusMeters, typeSelections) });
-        if (wideSearch) {
-          for (const t of typeSelections) {
-            const label = t.replace(/_/g, ' ');
-            labeledPromises.push({ label: 'Text: ' + label, promise: searchByText(label, searchCenter.lat, searchCenter.lng, radiusMeters, excludeStores) });
+    // 5. Get LLM activity ideas
+    const { prompt: llmPrompt, ideas } = await getActivityIdeas(locationDesc, {
+      isFullDay,
+      onlyCategoryName,
+      selectedActivities
+    });
+
+    // Dev tracking
+    const devLog = {
+      prompt: llmPrompt,
+      ideas: [...ideas],
+      skipped: [],
+      picked: null,
+      googleResult: null,
+      usedFallback: false,
+      fallbackResults: null
+    };
+
+    // 6. Try LLM suggestions one by one
+    let foundPlace = null;
+
+    if (ideas.length > 0) {
+      // Shuffle for randomness
+      const shuffled = [...ideas].sort(() => Math.random() - 0.5);
+
+      for (const idea of shuffled) {
+        try {
+          const places = await lookupPlace(idea, searchCenter.lat, searchCenter.lng, radiusMeters);
+
+          if (places.length === 0) {
+            devLog.skipped.push({ idea, reason: 'No Google match' });
+            continue;
+          }
+
+          const place = places[0];
+
+          // Check distance
+          if (place.location) {
+            const dist = haversine(searchCenter.lat, searchCenter.lng, place.location.latitude, place.location.longitude);
+            if (dist > radiusMiles * 1.2) {
+              devLog.skipped.push({ idea, reason: `Too far (${dist.toFixed(1)} mi)` });
+              continue;
+            }
+          }
+
+          // Check open now
+          if (openNow && (!place.currentOpeningHours || place.currentOpeningHours.openNow !== true)) {
+            devLog.skipped.push({ idea, reason: 'Closed' });
+            continue;
+          }
+
+          // Check business status (skip for full day — historic sites etc. may not be OPERATIONAL)
+          if (!isFullDay && place.businessStatus && place.businessStatus !== 'OPERATIONAL') {
+            devLog.skipped.push({ idea, reason: `Status: ${place.businessStatus}` });
+            continue;
+          }
+
+          foundPlace = place;
+          devLog.picked = idea;
+          devLog.googleResult = place;
+          break;
+        } catch {
+          devLog.skipped.push({ idea, reason: 'Lookup error' });
+          continue;
+        }
+      }
+    }
+
+    // 7. Fallback to Google Places search if LLM path failed
+    if (!foundPlace) {
+      devLog.usedFallback = true;
+      console.log('LLM path failed, falling back to Google Places search');
+
+      try {
+        const isShoppingSearch = !isFullDay && (
+          (onlyCat && onlyCat.id === 'catShopping') ||
+          (!onlyCat && document.querySelectorAll('#catShopping .activity-grid input[type="checkbox"]:checked').length > 0)
+        );
+        const excludeStores = !isShoppingSearch;
+
+        const typeSelections = [];
+        const textSelections = [];
+
+        if (onlyCat) {
+          onlyCat.querySelectorAll('.activity-grid input[type="checkbox"]').forEach(cb => {
+            if (cb.dataset.mode === 'text') textSelections.push(cb.value);
+            else typeSelections.push(cb.value);
+          });
+        } else if (!isFullDay) {
+          document.querySelectorAll('.category .activity-grid input[type="checkbox"]:checked').forEach(cb => {
+            if (cb.dataset.mode === 'text') textSelections.push(cb.value);
+            else typeSelections.push(cb.value);
+          });
+        }
+
+        const nothingSelected = typeSelections.length === 0 && textSelections.length === 0;
+        const labeledPromises = [];
+        const wideSearch = radiusMeters > NEARBY_MAX_RADIUS;
+
+        if (nothingSelected) {
+          labeledPromises.push({ label: 'Nearby: default types', promise: searchNearbyByType(searchCenter.lat, searchCenter.lng, radiusMeters, DEFAULT_ACTIVITY_TYPES) });
+        } else {
+          if (typeSelections.length > 0) {
+            labeledPromises.push({ label: 'Nearby: ' + typeSelections.join(', '), promise: searchNearbyByType(searchCenter.lat, searchCenter.lng, radiusMeters, typeSelections) });
+            if (wideSearch) {
+              for (const t of typeSelections) {
+                const label = t.replace(/_/g, ' ');
+                labeledPromises.push({ label: 'Text: ' + label, promise: searchByText(label, searchCenter.lat, searchCenter.lng, radiusMeters, excludeStores) });
+              }
+            }
+          }
+          for (const query of textSelections) {
+            labeledPromises.push({ label: 'Text: ' + query, promise: searchByText(query, searchCenter.lat, searchCenter.lng, radiusMeters, excludeStores) });
           }
         }
-      }
-      for (const query of textSelections) {
-        labeledPromises.push({ label: 'Text: ' + query, promise: searchByText(query, searchCenter.lat, searchCenter.lng, radiusMeters, excludeStores) });
+
+        const rawResults = await Promise.all(labeledPromises.map(lp => lp.promise));
+        const labeledResults = labeledPromises.map((lp, i) => ({ label: lp.label, places: rawResults[i] }));
+        const mergedPlaces = deduplicate(rawResults.flat());
+        let places = filterPlaces(mergedPlaces, openNow, searchCenter, radiusMeters, excludeStores, isFullDay);
+
+        devLog.fallbackResults = { labeledResults, mergedPlaces, filteredPlaces: places, searchCenter };
+
+        if (places.length === 0) {
+          renderDevPanel(devLog);
+          throw new Error('No results found. Try expanding your search distance or removing filters.');
+        }
+
+        foundPlace = places[Math.floor(Math.random() * places.length)];
+      } catch (fallbackErr) {
+        console.error('Fallback search also failed:', fallbackErr);
+        renderDevPanel(devLog);
+        throw fallbackErr;
       }
     }
 
-    const rawResults = await Promise.all(labeledPromises.map(lp => lp.promise));
-    const labeledResults = labeledPromises.map((lp, i) => ({ label: lp.label, places: rawResults[i] }));
-    const mergedPlaces = deduplicate(rawResults.flat());
+    // Render dev panel
+    renderDevPanel(devLog);
 
-    // 6. Filter
-    let places = filterPlaces(mergedPlaces, openNow, searchCenter, radiusMeters, excludeStores, isFullDay);
-
-    // Dev: populate debug panel
-    renderDevPanel(labeledResults, mergedPlaces, places, searchCenter);
-
-    if (places.length === 0) {
-      throw new Error('No results found. Try expanding your search distance or removing filters.');
-    }
-
-    // 7. Pick a random activity
-    const place = places[Math.floor(Math.random() * places.length)];
+    // 8. Display result
+    const place = foundPlace;
     const name = place.displayName?.text || 'Unknown Activity';
     const address = place.formattedAddress || '';
     const rating = place.rating;
@@ -1393,14 +1510,14 @@ generateBtn.addEventListener('click', async () => {
     const isOpen = place.currentOpeningHours?.openNow;
     const mapsUrl = place.googleMapsUri || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + ' ' + address)}`;
 
-    // 8. Calculate distance if user provided coordinates
+    // 9. Calculate distance if user provided coordinates
     let distText = '';
     if (userLocation && place.location) {
       const dist = haversine(userLocation.lat, userLocation.lng, place.location.latitude, place.location.longitude);
       distText = `~${dist.toFixed(1)} miles from you`;
     }
 
-    // 9. Display result
+    // 10. Display
     resultName.textContent = name;
     resultAddress.textContent = address;
     resultRating.innerHTML = formatRating(rating, ratingCount);
@@ -1431,14 +1548,15 @@ generateBtn.addEventListener('click', async () => {
 
     setLoading(false);
 
-    // 10. Generate AI description (non-blocking for UI)
+    // 11. Generate AI description (non-blocking for UI)
     const desc = await generateDescription(name, address);
     resultDesc.textContent = desc;
     resultDesc.classList.remove('loading');
 
   } catch (err) {
+    console.error('Generate failed:', err);
     setLoading(false);
-    showError(err.message);
+    showError(err.message || 'An unknown error occurred. Check the browser console for details.');
   }
 });
 
