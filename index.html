@@ -3,13 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <title>Activity At Random</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: #0f0f0f;
+    font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
     color: #e0e0e0;
     min-height: 100vh;
     display: flex;
@@ -24,7 +25,7 @@
     position: fixed;
     inset: 0;
     background:
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Ctext x='20' y='40' font-size='28' opacity='0.07'%3E🎳%3C/text%3E%3Ctext x='110' y='30' font-size='24' opacity='0.06'%3E🧗%3C/text%3E%3Ctext x='60' y='90' font-size='26' opacity='0.07'%3E🎮%3C/text%3E%3Ctext x='150' y='80' font-size='22' opacity='0.05'%3E🎬%3C/text%3E%3Ctext x='10' y='140' font-size='24' opacity='0.06'%3E🏊%3C/text%3E%3Ctext x='100' y='150' font-size='28' opacity='0.07'%3E🎯%3C/text%3E%3Ctext x='40' y='190' font-size='22' opacity='0.05'%3E🏄%3C/text%3E%3Ctext x='150' y='180' font-size='26' opacity='0.06'%3E🎭%3C/text%3E%3C/svg%3E")
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='350' height='350'%3E%3Ctext x='20' y='65' font-size='58' opacity='0.18'%3E🎳%3C/text%3E%3Ctext x='200' y='50' font-size='52' opacity='0.15'%3E🧗%3C/text%3E%3Ctext x='90' y='160' font-size='56' opacity='0.18'%3E🎮%3C/text%3E%3Ctext x='260' y='145' font-size='48' opacity='0.14'%3E🎬%3C/text%3E%3Ctext x='15' y='260' font-size='52' opacity='0.15'%3E🏊%3C/text%3E%3Ctext x='170' y='270' font-size='58' opacity='0.18'%3E🎯%3C/text%3E%3Ctext x='60' y='340' font-size='48' opacity='0.14'%3E🏄%3C/text%3E%3Ctext x='270' y='330' font-size='54' opacity='0.16'%3E🎭%3C/text%3E%3C/svg%3E")
       repeat;
     pointer-events: none;
     z-index: 0;
@@ -36,13 +37,16 @@
   }
 
   h1 {
-    font-size: 1.8rem;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: clamp(1.8rem, 5vw, 3.2rem);
     margin-bottom: 0.3rem;
     color: #fff;
+    font-weight: 700;
+    letter-spacing: -0.02em;
   }
 
   .subtitle {
-    color: #888;
+    color: rgba(255, 255, 255, 0.5);
     margin-bottom: 2rem;
     font-size: 0.95rem;
   }
@@ -50,6 +54,11 @@
   .app {
     width: 100%;
     max-width: 520px;
+    background: rgba(0, 0, 0, 0.45);
+    border-radius: 20px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    padding: 1.5rem 2rem;
   }
 
   /* --- Form Controls --- */
@@ -67,8 +76,8 @@
   input[type="text"], select {
     width: 100%;
     padding: 0.65rem 0.8rem;
-    background: #1a1a1a;
-    border: 1px solid #333;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 8px;
     color: #e0e0e0;
     font-size: 1rem;
@@ -77,12 +86,12 @@
   }
 
   input[type="text"]:focus, select:focus {
-    border-color: #06b6d4;
+    border-color: #7c83ff;
   }
 
   select { cursor: pointer; }
   select:disabled { opacity: 0.4; cursor: not-allowed; }
-  select option { background: #1a1a1a; }
+  select option { background: #24243e; }
 
   .row {
     display: flex;
@@ -94,7 +103,7 @@
   /* --- Collapsible Categories --- */
   .category {
     margin-bottom: 0.8rem;
-    border: 1px solid #2a2a2a;
+    border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 8px;
     overflow: hidden;
   }
@@ -104,13 +113,13 @@
     align-items: center;
     justify-content: space-between;
     padding: 0.65rem 0.8rem;
-    background: #1a1a1a;
+    background: rgba(255, 255, 255, 0.06);
     cursor: pointer;
     user-select: none;
   }
 
   .category-header:hover {
-    background: #1f1f1f;
+    background: rgba(255, 255, 255, 0.1);
   }
 
   .category-title {
@@ -123,7 +132,7 @@
 
   .category-count {
     font-size: 0.7rem;
-    color: #06b6d4;
+    color: #7c83ff;
     display: none;
   }
 
@@ -152,7 +161,7 @@
   .category-toggle label .slider {
     position: absolute;
     inset: 0;
-    background: #333;
+    background: rgba(255, 255, 255, 0.15);
     border-radius: 20px;
     transition: background 0.2s;
   }
@@ -169,7 +178,7 @@
     transition: transform 0.2s;
   }
 
-  .category-toggle label input:checked + .slider { background: #06b6d4; }
+  .category-toggle label input:checked + .slider { background: #7c83ff; }
   .category-toggle label input:checked + .slider::before { transform: translateX(16px); }
 
   .category-toggle span {
@@ -189,11 +198,11 @@
   }
 
   .category.cat-only-active {
-    border-color: #06b6d4;
+    border-color: #7c83ff;
   }
 
   .category.cat-only-active .category-title {
-    color: #06b6d4;
+    color: #7c83ff;
   }
 
   .category-body {
@@ -207,7 +216,7 @@
 
   .subcategory-label {
     font-size: 0.7rem;
-    color: #555;
+    color: rgba(255, 255, 255, 0.35);
     text-transform: uppercase;
     letter-spacing: 0.04em;
     margin: 0.7rem 0 0.3rem;
@@ -236,7 +245,7 @@
   }
 
   .activity-grid input[type="checkbox"] {
-    accent-color: #06b6d4;
+    accent-color: #7c83ff;
     width: 16px;
     height: 16px;
   }
@@ -276,7 +285,7 @@
   .toggle .slider {
     position: absolute;
     inset: 0;
-    background: #333;
+    background: rgba(255, 255, 255, 0.15);
     border-radius: 24px;
     transition: background 0.2s;
   }
@@ -293,7 +302,7 @@
     transition: transform 0.2s;
   }
 
-  .toggle input:checked + .slider { background: #06b6d4; }
+  .toggle input:checked + .slider { background: #7c83ff; }
   .toggle input:checked + .slider::before { transform: translateX(20px); }
 
   /* --- Button --- */
@@ -305,12 +314,12 @@
     border: none;
     border-radius: 8px;
     cursor: pointer;
-    background: #06b6d4;
+    background: #7c83ff;
     color: #fff;
     transition: background 0.2s, transform 0.1s;
   }
 
-  .btn:hover { background: #0891b2; }
+  .btn:hover { background: #6a71f0; }
   .btn:active { transform: scale(0.98); }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -328,7 +337,7 @@
     width: 10px;
     height: 10px;
     margin: 0 4px;
-    background: #06b6d4;
+    background: #7c83ff;
     border-radius: 50%;
     animation: bounce 1.2s infinite ease-in-out;
   }
@@ -364,8 +373,8 @@
     display: none;
     width: 100%;
     margin-top: 1.5rem;
-    background: #1a1a2e;
-    border: 1px solid #333;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 12px;
     padding: 1rem;
     font-size: 0.8rem;
@@ -379,12 +388,12 @@
   .dev-section summary:hover { color: #fff; }
   .dev-place {
     padding: 0.3rem 0;
-    border-bottom: 1px solid #222;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     display: flex;
     justify-content: space-between;
     gap: 0.5rem;
   }
-  .dev-place-name { color: #7ec8e3; }
+  .dev-place-name { color: #a5a8ff; }
   .dev-place-meta { color: #666; text-align: right; white-space: nowrap; font-size: 0.75rem; }
   .dev-place.filtered { opacity: 0.35; }
   .dev-stat { color: #888; margin-bottom: 0.3rem; }
@@ -392,8 +401,8 @@
   /* --- Result Card --- */
   .result-card {
     display: none;
-    background: #1a1a1a;
-    border: 1px solid #2a2a2a;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 12px;
     padding: 1.5rem;
     margin-top: 1.5rem;
@@ -425,14 +434,14 @@
   .result-meta .closed { color: #ef5350; }
 
   .result-meta .distance {
-    color: #67e8f9;
+    color: #90caf9;
   }
 
   .result-description {
     font-size: 0.95rem;
     line-height: 1.55;
     color: #bbb;
-    border-top: 1px solid #2a2a2a;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
     padding-top: 1rem;
   }
 
@@ -449,7 +458,7 @@
 
   .result-actions a {
     font-size: 0.85rem;
-    color: #22d3ee;
+    color: #a5a8ff;
     text-decoration: none;
   }
 
@@ -458,8 +467,8 @@
   /* --- Error --- */
   .error-msg {
     display: none;
-    background: #2a1515;
-    border: 1px solid #5a2020;
+    background: rgba(239, 83, 80, 0.15);
+    border: 1px solid rgba(239, 83, 80, 0.3);
     border-radius: 8px;
     padding: 0.8rem 1rem;
     margin-top: 1rem;
