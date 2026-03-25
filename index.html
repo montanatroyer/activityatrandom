@@ -479,6 +479,7 @@
       <label><input type="checkbox" value="outdoors"> Outdoors</label>
       <label><input type="checkbox" value="culture"> Culture</label>
       <label><input type="checkbox" value="relaxation"> Relaxation</label>
+      <label><input type="checkbox" value="parks"> Parks</label>
       <label><input type="checkbox" value="shopping"> Shopping</label>
     </div>
   </div>
@@ -529,10 +530,9 @@ const DEV_MODE = false;
 const DEFAULT_ACTIVITY_TYPES = [
   'bowling_alley', 'fitness_center', 'golf_course', 'skateboard_park',
   'sports_club', 'swimming_pool', 'amusement_center', 'amusement_park',
-  'movie_theater', 'karaoke', 'water_park', 'hiking_area', 'park',
-  'national_park', 'ski_resort', 'marina', 'dog_park', 'museum',
-  'art_gallery', 'zoo', 'spa', 'cultural_center', 'tourist_attraction',
-  'aquarium', 'library'
+  'movie_theater', 'karaoke', 'water_park', 'ski_resort', 'marina',
+  'museum', 'art_gallery', 'zoo', 'spa', 'cultural_center',
+  'tourist_attraction', 'aquarium', 'library'
 ];
 
 // Store types to exclude from non-shopping searches (Google Places API types)
@@ -550,6 +550,30 @@ const STORE_NAME_KEYWORDS = [
   'store', 'shop', 'supply', 'supplies', 'retail', 'depot', 'warehouse',
   'outlet', 'mart', 'superstore', 'megastore', 'emporium'
 ];
+
+// Park types to exclude from non-park searches (Google Places API types)
+const PARK_EXCLUDED_TYPES = ['park', 'national_park', 'dog_park', 'hiking_area'];
+
+// Park activity types to include when Parks category is selected (for fallback search)
+const PARK_ACTIVITY_TYPES = ['park', 'national_park', 'dog_park', 'hiking_area'];
+
+// Keywords in place names that indicate a park (for client-side filtering)
+const PARK_NAME_KEYWORDS = [
+  'dog park', 'state park', 'national park', 'county park', 'city park',
+  'regional park', 'trailhead', 'hiking trail', 'nature preserve',
+  'nature reserve', 'wildlife refuge', 'national forest', 'state forest'
+];
+
+// Preferred search terms per category (used to improve LLM suggestions)
+const CATEGORY_KEYWORDS = {
+  'active & sports': 'pickleball, racketball, tennis, golf, paddleboard, basketball, rock climbing gym, dance classes',
+  'entertainment': 'bowling, pool hall, movies, escape room, smash room, mini golf',
+  'outdoors': 'white water rafting, sky diving, tubing, frisbee golf, ski resort, jet ski, boating',
+  'culture': 'museum, local history tours, ethnic cultural centers, religious sites',
+  'relaxation': 'massage, sauna, spa, hot tub, hot springs, resort',
+  'parks': 'dog park, local park, national park, state park, government park, hiking trails, trailheads',
+  'shopping': 'shopping mall, boutique, outlet, thrift store, antique shop, flea market'
+};
 
 const FULL_DAY_RADIUS = 160934; // 100 miles in meters
 
@@ -823,7 +847,7 @@ function deduplicate(places) {
 }
 
 /** Filter places: remove closed businesses, optionally filter stores and open now */
-function filterPlaces(places, openNow, searchCenter, radiusMeters, excludeStores = false, isFullDay = false) {
+function filterPlaces(places, openNow, searchCenter, radiusMeters, excludeStores = false, isFullDay = false, excludeParks = false) {
   // Full day mode skips businessStatus filter — historic sites, ghost towns, etc. may not be "OPERATIONAL"
   let filtered = isFullDay
     ? places
@@ -834,6 +858,16 @@ function filterPlaces(places, openNow, searchCenter, radiusMeters, excludeStores
     filtered = filtered.filter(p => {
       const name = (p.displayName?.text || '').toLowerCase();
       return !STORE_NAME_KEYWORDS.some(kw => name.includes(kw));
+    });
+  }
+
+  // Exclude parks by type and name keywords
+  if (excludeParks) {
+    filtered = filtered.filter(p => {
+      const types = p.types || [];
+      if (PARK_EXCLUDED_TYPES.some(t => types.includes(t))) return false;
+      const name = (p.displayName?.text || '').toLowerCase();
+      return !PARK_NAME_KEYWORDS.some(kw => name.includes(kw));
     });
   }
 
@@ -869,14 +903,22 @@ async function getActivityIdeas(locationDesc, filters) {
   const cats = filters.selectedCategories || [];
   const mode = filters.categoryFilterMode || 'include';
 
+  // Build exclusion hints for the LLM based on what should be filtered out
+  const exclusions = [];
+  if (filters.excludeParks) exclusions.push('parks, trails, hiking areas, or nature preserves');
+  if (filters.excludeStores) exclusions.push('stores, shops, or retail');
+  const exclusionText = exclusions.length > 0 ? ` Do NOT suggest ${exclusions.join(' or ')}.` : '';
+
   if (filters.isFullDay) {
     prompt = `Suggest 20 unique full-day activities or destinations near ${locationDesc} that take 2+ hours and are worth driving up to 100 miles for. Include a mix of outdoor adventures, historical sites, scenic spots, and unique local experiences. Focus on things that are special or iconic to this area rather than generic activities found everywhere. Return ONLY the place or activity names, one per line, no numbering or extra text.`;
   } else if (cats.length > 0 && mode === 'include') {
-    prompt = `Suggest 20 unique activities or places to visit near ${locationDesc} in these categories: ${cats.join(', ')}. Focus on things that are special or iconic to this area rather than generic activities found everywhere. Return ONLY the place or activity names, one per line, no numbering or extra text.`;
+    const keywordHints = cats.map(c => `${c}: ${CATEGORY_KEYWORDS[c] || c}`).join('; ');
+    prompt = `Suggest 20 unique activities or places to visit near ${locationDesc} in these categories: ${cats.join(', ')}. Prioritize these types of activities: ${keywordHints}.${exclusionText} Focus on things that are special or iconic to this area rather than generic activities found everywhere. Return ONLY the place or activity names, one per line, no numbering or extra text.`;
   } else if (cats.length > 0 && mode === 'exclude') {
-    prompt = `Suggest 20 unique, interesting activities or places to visit near ${locationDesc}. EXCLUDE anything related to: ${cats.join(', ')}. Focus on things that are special or iconic to this area rather than generic activities found everywhere. Return ONLY the place or activity names, one per line, no numbering or extra text.`;
+    const excludedHints = cats.map(c => `${c} (${CATEGORY_KEYWORDS[c] || c})`).join('; ');
+    prompt = `Suggest 20 unique, interesting activities or places to visit near ${locationDesc}. EXCLUDE anything related to: ${excludedHints}.${exclusionText} Focus on things that are special or iconic to this area rather than generic activities found everywhere. Return ONLY the place or activity names, one per line, no numbering or extra text.`;
   } else {
-    prompt = `Suggest 20 unique, interesting activities or places to visit near ${locationDesc}. Focus on things that are special or iconic to this area rather than generic activities found everywhere. Include a mix of outdoor, cultural, entertainment, food & drink, and local attractions. Return ONLY the place or activity names, one per line, no numbering or extra text.`;
+    prompt = `Suggest 20 unique, interesting activities or places to visit near ${locationDesc}.${exclusionText} Focus on things that are special or iconic to this area rather than generic activities found everywhere. Include a mix of outdoor, cultural, entertainment, food & drink, and local attractions. Return ONLY the place or activity names, one per line, no numbering or extra text.`;
   }
 
   try {
@@ -1027,6 +1069,12 @@ generateBtn.addEventListener('click', async () => {
     const selectedCategories = isFullDay ? [] : getSelectedCategories();
     const categoryFilterMode = filterMode; // 'include' or 'exclude'
 
+    // Determine what to exclude (parks and stores are isolated to their own categories)
+    const isParksIncluded = categoryFilterMode === 'include' && selectedCategories.includes('parks');
+    const isShoppingIncluded = categoryFilterMode === 'include' && selectedCategories.includes('shopping');
+    const excludeParks = !isParksIncluded && !isFullDay;
+    const excludeStores = !isShoppingIncluded;
+
     // 3. Get radius and open now preference
     const radiusMeters = isFullDay ? FULL_DAY_RADIUS : +distanceSelect.value;
     const openNow = isFullDay ? false : openNowCheckbox.checked;
@@ -1041,7 +1089,9 @@ generateBtn.addEventListener('click', async () => {
     const { prompt: llmPrompt, ideas } = await getActivityIdeas(locationDesc, {
       isFullDay,
       selectedCategories,
-      categoryFilterMode
+      categoryFilterMode,
+      excludeParks,
+      excludeStores
     });
 
     // Dev tracking
@@ -1092,6 +1142,16 @@ generateBtn.addEventListener('click', async () => {
           if (!isFullDay && place.businessStatus && place.businessStatus !== 'OPERATIONAL') {
             devLog.skipped.push({ idea, reason: `Status: ${place.businessStatus}` });
             continue;
+          }
+
+          // Exclude parks when Parks category is not selected
+          if (excludeParks) {
+            const types = place.types || [];
+            const placeName = (place.displayName?.text || '').toLowerCase();
+            if (PARK_EXCLUDED_TYPES.some(t => types.includes(t)) || PARK_NAME_KEYWORDS.some(kw => placeName.includes(kw))) {
+              devLog.skipped.push({ idea, reason: 'Park (excluded)' });
+              continue;
+            }
           }
 
           foundPlace = place;
