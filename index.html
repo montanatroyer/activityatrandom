@@ -434,7 +434,7 @@
   <div class="row">
     <div class="field">
       <label for="distance">Distance</label>
-      <select id="distance" disabled>
+      <select id="distance">
         <option value="3219">Walkable (0-2 miles)</option>
         <option value="8047">0-5 miles</option>
         <option value="16093" selected>0-10 miles</option>
@@ -453,15 +453,6 @@
       <span class="slider"></span>
     </label>
     <span>Open now only</span>
-  </div>
-
-  <!-- Full Day Activity Toggle -->
-  <div class="toggle-row">
-    <label class="toggle">
-      <input type="checkbox" id="fullDay">
-      <span class="slider"></span>
-    </label>
-    <span>Full day activity</span>
   </div>
 
   <!-- Filter Mode -->
@@ -580,18 +571,16 @@ const CIVIC_NAME_KEYWORDS = [
 
 // Preferred search terms per category (used to improve LLM suggestions)
 const CATEGORY_KEYWORDS = {
-  'active & sports': 'pickleball, racketball, tennis, golf, paddleboard, basketball, rock climbing gym, dance classes',
-  'entertainment': 'bowling, pool hall, movies, escape room, smash room, mini golf',
-  'outdoors': 'white water rafting, sky diving, tubing, frisbee golf, ski resort, jet ski, boating',
-  'culture': 'museum, local history tours, ethnic cultural centers, religious sites',
-  'relaxation': 'massage, sauna, spa, hot tub, hot springs, resort',
-  'parks': 'dog park, local park, national park, state park, government park, hiking trails, trailheads',
-  'shopping': 'shopping mall, boutique, outlet, thrift store, antique shop, flea market'
+  'active & sports': 'pickleball, racketball, tennis, golf, paddleboard, basketball, rock climbing gym, dance, swimming, water park',
+  'entertainment': 'bowling, pool hall, movies, escape room, smash room, mini golf, arcade, ax throwing, laser tag, cat cafe, petting cats, amusement park, waterpark',
+  'outdoors': 'white water rafting, sky diving, tubing, frisbee golf, ski resort, jet ski, boating, horseback riding, snowmobiling',
+  'culture': 'museum, local history tours, ethnic locations, religious locations, scavenger hunts',
+  'relaxation': 'massage, sauna, spa, tub, hot springs, resort',
+  'parks': 'dog park, local park, national park, government park, hiking, trailheads',
+  'shopping': 'mall, thrift shops, sports shops'
 };
 
 const ALL_CATEGORY_KEYWORDS = Object.values(CATEGORY_KEYWORDS).join(', ');
-
-const FULL_DAY_RADIUS = 160934; // 100 miles in meters
 
 // --- DOM refs ---
 const locationMode = document.getElementById('locationMode');
@@ -605,7 +594,6 @@ const zipcodeInput = document.getElementById('zipcode');
 const ddInput = document.getElementById('dd');
 const distanceSelect = document.getElementById('distance');
 const openNowCheckbox = document.getElementById('openNow');
-const fullDayCheckbox = document.getElementById('fullDay');
 const generateBtn = document.getElementById('generateBtn');
 const spinner = document.getElementById('spinner');
 const errorDiv = document.getElementById('error');
@@ -863,11 +851,8 @@ function deduplicate(places) {
 }
 
 /** Filter places: remove closed businesses, optionally filter stores and open now */
-function filterPlaces(places, openNow, searchCenter, radiusMeters, excludeStores = false, isFullDay = false, excludeParks = false) {
-  // Full day mode skips businessStatus filter — historic sites, ghost towns, etc. may not be "OPERATIONAL"
-  let filtered = isFullDay
-    ? places
-    : places.filter(p => !p.businessStatus || p.businessStatus === 'OPERATIONAL');
+function filterPlaces(places, openNow, searchCenter, radiusMeters, excludeStores = false, excludeParks = false) {
+  let filtered = places.filter(p => !p.businessStatus || p.businessStatus === 'OPERATIONAL');
 
   // Exclude stores by name keywords (safety net for results that slip through API filtering)
   if (excludeStores) {
@@ -934,9 +919,7 @@ async function getActivityIdeas(locationDesc, filters) {
   exclusions.push('government buildings, courthouses, post offices, or civic offices');
   const exclusionText = ` Do NOT suggest ${exclusions.join(' or ')}.`;
 
-  if (filters.isFullDay) {
-    prompt = `Suggest 20 unique full-day activities or destinations near ${locationDesc} that take 2+ hours and are worth driving up to 100 miles for. Include a mix of outdoor adventures, historical sites, scenic spots, and unique local experiences. Focus on things that are special or iconic to this area rather than generic activities found everywhere. Return ONLY the place or activity names, one per line, no numbering or extra text.`;
-  } else if (cats.length > 0 && mode === 'include') {
+  if (cats.length > 0 && mode === 'include') {
     const keywordHints = cats.map(c => `${c}: ${CATEGORY_KEYWORDS[c] || c}`).join('; ');
     prompt = `Suggest 20 unique activities or places to visit near ${locationDesc} in these categories: ${cats.join(', ')}. Prioritize these types of activities: ${keywordHints}.${exclusionText} Focus on things that are special or iconic to this area rather than generic activities found everywhere. Return ONLY the place or activity names, one per line, no numbering or extra text.`;
   } else if (cats.length > 0 && mode === 'exclude') {
@@ -1087,22 +1070,22 @@ generateBtn.addEventListener('click', async () => {
       searchCenter = userLocation;
     } else {
       searchCenter = await geocodeZipcode(zip);
+      userLocation = searchCenter;
     }
 
     // 2. Build filter object from UI state
-    const isFullDay = fullDayCheckbox.checked;
-    const selectedCategories = isFullDay ? [] : getSelectedCategories();
+    const selectedCategories = getSelectedCategories();
     const categoryFilterMode = filterMode; // 'include' or 'exclude'
 
     // Determine what to exclude (parks and stores are isolated to their own categories)
     const isParksIncluded = categoryFilterMode === 'include' && selectedCategories.includes('parks');
     const isShoppingIncluded = categoryFilterMode === 'include' && selectedCategories.includes('shopping');
-    const excludeParks = !isParksIncluded && !isFullDay;
+    const excludeParks = !isParksIncluded;
     const excludeStores = !isShoppingIncluded;
 
     // 3. Get radius and open now preference
-    const radiusMeters = isFullDay ? FULL_DAY_RADIUS : +distanceSelect.value;
-    const openNow = isFullDay ? false : openNowCheckbox.checked;
+    const radiusMeters = +distanceSelect.value;
+    const openNow = openNowCheckbox.checked;
     const radiusMiles = radiusMeters / 1609.34;
 
     // 4. Build location description for LLM
@@ -1112,7 +1095,6 @@ generateBtn.addEventListener('click', async () => {
 
     // 5. Get LLM activity ideas
     const { prompt: llmPrompt, ideas } = await getActivityIdeas(locationDesc, {
-      isFullDay,
       selectedCategories,
       categoryFilterMode,
       excludeParks,
@@ -1163,8 +1145,8 @@ generateBtn.addEventListener('click', async () => {
             continue;
           }
 
-          // Check business status (skip for full day — historic sites etc. may not be OPERATIONAL)
-          if (!isFullDay && place.businessStatus && place.businessStatus !== 'OPERATIONAL') {
+          // Check business status
+          if (place.businessStatus && place.businessStatus !== 'OPERATIONAL') {
             devLog.skipped.push({ idea, reason: `Status: ${place.businessStatus}` });
             continue;
           }
@@ -1211,7 +1193,7 @@ generateBtn.addEventListener('click', async () => {
 
         const rawPlaces = await searchNearbyByType(searchCenter.lat, searchCenter.lng, radiusMeters, DEFAULT_ACTIVITY_TYPES);
         const mergedPlaces = deduplicate(rawPlaces);
-        let places = filterPlaces(mergedPlaces, openNow, searchCenter, radiusMeters, excludeStores, isFullDay, excludeParks);
+        let places = filterPlaces(mergedPlaces, openNow, searchCenter, radiusMeters, excludeStores, excludeParks);
         const labeledResults = [{ label: 'Nearby: default types', places: rawPlaces }];
 
         devLog.fallbackResults = { labeledResults, mergedPlaces, filteredPlaces: places, searchCenter };
@@ -1307,14 +1289,12 @@ useMyLocationToggle.addEventListener('change', () => {
     ddField.style.display = 'none';
     geoField.style.display = '';
     geoStatus.textContent = 'Click Generate to detect your location';
-    distanceSelect.disabled = false;
   } else {
     locationModeField.style.display = '';
     geoField.style.display = 'none';
     const isDD = locationMode.value === 'dd';
     zipField.style.display = isDD ? 'none' : '';
     ddField.style.display = isDD ? '' : 'none';
-    distanceSelect.disabled = !isDD;
   }
 });
 
@@ -1324,45 +1304,10 @@ locationMode.addEventListener('change', () => {
   const isDD = locationMode.value === 'dd';
   zipField.style.display = isDD ? 'none' : '';
   ddField.style.display = isDD ? '' : 'none';
-  distanceSelect.disabled = !isDD;
   zipcodeInput.value = '';
   ddInput.value = '';
 });
 
-// Toggle "Full day activity" mode
-let savedDistance = null;
-let savedOpenNow = null;
-fullDayCheckbox.addEventListener('change', () => {
-  if (fullDayCheckbox.checked) {
-    // Save current values, then override
-    savedDistance = distanceSelect.value;
-    savedOpenNow = openNowCheckbox.checked;
-    distanceSelect.value = '160934';
-    distanceSelect.disabled = true;
-    openNowCheckbox.checked = false;
-    openNowCheckbox.closest('.toggle-row').style.opacity = '0.4';
-    openNowCheckbox.closest('.toggle-row').style.pointerEvents = 'none';
-    // Disable category filters (full day overrides them)
-    filterModeDiv.style.opacity = '0.4';
-    filterModeDiv.style.pointerEvents = 'none';
-    document.getElementById('categoryGrid').closest('.field').style.opacity = '0.4';
-    document.getElementById('categoryGrid').closest('.field').style.pointerEvents = 'none';
-  } else {
-    // Restore saved values
-    if (savedDistance !== null) distanceSelect.value = savedDistance;
-    if (savedOpenNow !== null) openNowCheckbox.checked = savedOpenNow;
-    // Re-enable distance based on location mode
-    const useGeo = useMyLocationToggle.checked;
-    const isDD = locationMode.value === 'dd';
-    distanceSelect.disabled = !(useGeo || isDD);
-    openNowCheckbox.closest('.toggle-row').style.opacity = '';
-    openNowCheckbox.closest('.toggle-row').style.pointerEvents = '';
-    filterModeDiv.style.opacity = '';
-    filterModeDiv.style.pointerEvents = '';
-    document.getElementById('categoryGrid').closest('.field').style.opacity = '';
-    document.getElementById('categoryGrid').closest('.field').style.pointerEvents = '';
-  }
-});
 </script>
 
 <script defer src="/_vercel/insights/script.js"></script>
