@@ -564,6 +564,20 @@ const PARK_NAME_KEYWORDS = [
   'nature reserve', 'wildlife refuge', 'national forest', 'state forest'
 ];
 
+// Government/civic building types to always exclude (Google Places API types)
+const CIVIC_EXCLUDED_TYPES = [
+  'city_hall', 'courthouse', 'fire_station', 'local_government_office',
+  'police', 'post_office'
+];
+
+// Keywords in place names that indicate a government/civic building
+const CIVIC_NAME_KEYWORDS = [
+  'courthouse', 'court house', 'city hall', 'town hall', 'post office',
+  'fire station', 'fire department', 'police station', 'police department',
+  'dmv', 'department of motor', 'tax office', 'county clerk',
+  'municipal', 'civic center'
+];
+
 // Preferred search terms per category (used to improve LLM suggestions)
 const CATEGORY_KEYWORDS = {
   'active & sports': 'pickleball, racketball, tennis, golf, paddleboard, basketball, rock climbing gym, dance classes',
@@ -574,6 +588,8 @@ const CATEGORY_KEYWORDS = {
   'parks': 'dog park, local park, national park, state park, government park, hiking trails, trailheads',
   'shopping': 'shopping mall, boutique, outlet, thrift store, antique shop, flea market'
 };
+
+const ALL_CATEGORY_KEYWORDS = Object.values(CATEGORY_KEYWORDS).join(', ');
 
 const FULL_DAY_RADIUS = 160934; // 100 miles in meters
 
@@ -871,6 +887,14 @@ function filterPlaces(places, openNow, searchCenter, radiusMeters, excludeStores
     });
   }
 
+  // Always exclude government/civic buildings (not fun activities)
+  filtered = filtered.filter(p => {
+    const types = p.types || [];
+    if (CIVIC_EXCLUDED_TYPES.some(t => types.includes(t))) return false;
+    const name = (p.displayName?.text || '').toLowerCase();
+    return !CIVIC_NAME_KEYWORDS.some(kw => name.includes(kw));
+  });
+
   // Filter text search results that may be outside radius
   if (searchCenter) {
     const radiusMiles = radiusMeters / 1609.34;
@@ -907,7 +931,8 @@ async function getActivityIdeas(locationDesc, filters) {
   const exclusions = [];
   if (filters.excludeParks) exclusions.push('parks, trails, hiking areas, or nature preserves');
   if (filters.excludeStores) exclusions.push('stores, shops, or retail');
-  const exclusionText = exclusions.length > 0 ? ` Do NOT suggest ${exclusions.join(' or ')}.` : '';
+  exclusions.push('government buildings, courthouses, post offices, or civic offices');
+  const exclusionText = ` Do NOT suggest ${exclusions.join(' or ')}.`;
 
   if (filters.isFullDay) {
     prompt = `Suggest 20 unique full-day activities or destinations near ${locationDesc} that take 2+ hours and are worth driving up to 100 miles for. Include a mix of outdoor adventures, historical sites, scenic spots, and unique local experiences. Focus on things that are special or iconic to this area rather than generic activities found everywhere. Return ONLY the place or activity names, one per line, no numbering or extra text.`;
@@ -918,7 +943,7 @@ async function getActivityIdeas(locationDesc, filters) {
     const excludedHints = cats.map(c => `${c} (${CATEGORY_KEYWORDS[c] || c})`).join('; ');
     prompt = `Suggest 20 unique, interesting activities or places to visit near ${locationDesc}. EXCLUDE anything related to: ${excludedHints}.${exclusionText} Focus on things that are special or iconic to this area rather than generic activities found everywhere. Return ONLY the place or activity names, one per line, no numbering or extra text.`;
   } else {
-    prompt = `Suggest 20 unique, interesting activities or places to visit near ${locationDesc}.${exclusionText} Focus on things that are special or iconic to this area rather than generic activities found everywhere. Include a mix of outdoor, cultural, entertainment, food & drink, and local attractions. Return ONLY the place or activity names, one per line, no numbering or extra text.`;
+    prompt = `Suggest 20 unique activities or places to visit near ${locationDesc}. Prioritize these types of activities: ${ALL_CATEGORY_KEYWORDS}.${exclusionText} Focus on things that are special or iconic to this area rather than generic activities found everywhere. Return ONLY the place or activity names, one per line, no numbering or extra text.`;
   }
 
   try {
@@ -1154,6 +1179,16 @@ generateBtn.addEventListener('click', async () => {
             }
           }
 
+          // Always exclude government/civic buildings
+          {
+            const types = place.types || [];
+            const placeName = (place.displayName?.text || '').toLowerCase();
+            if (CIVIC_EXCLUDED_TYPES.some(t => types.includes(t)) || CIVIC_NAME_KEYWORDS.some(kw => placeName.includes(kw))) {
+              devLog.skipped.push({ idea, reason: 'Civic building (excluded)' });
+              continue;
+            }
+          }
+
           foundPlace = place;
           devLog.picked = idea;
           devLog.googleResult = place;
@@ -1176,7 +1211,7 @@ generateBtn.addEventListener('click', async () => {
 
         const rawPlaces = await searchNearbyByType(searchCenter.lat, searchCenter.lng, radiusMeters, DEFAULT_ACTIVITY_TYPES);
         const mergedPlaces = deduplicate(rawPlaces);
-        let places = filterPlaces(mergedPlaces, openNow, searchCenter, radiusMeters, excludeStores, isFullDay);
+        let places = filterPlaces(mergedPlaces, openNow, searchCenter, radiusMeters, excludeStores, isFullDay, excludeParks);
         const labeledResults = [{ label: 'Nearby: default types', places: rawPlaces }];
 
         devLog.fallbackResults = { labeledResults, mergedPlaces, filteredPlaces: places, searchCenter };
