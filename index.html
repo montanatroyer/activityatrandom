@@ -430,7 +430,7 @@
     <input type="text" id="dd" placeholder="e.g. 34.052235, -118.243683">
   </div>
 
-  <!-- Distance -->
+  <!-- Distance + Results row -->
   <div class="row">
     <div class="field">
       <label for="distance">Distance</label>
@@ -442,6 +442,14 @@
         <option value="50000">0-30 miles</option>
         <option value="96561">0-60 miles</option>
         <option value="160934">0-100 miles</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="resultCount">Results</label>
+      <select id="resultCount">
+        <option value="1">1</option>
+        <option value="2" selected>2</option>
+        <option value="3">3</option>
       </select>
     </div>
   </div>
@@ -488,21 +496,8 @@
   <!-- Error -->
   <div class="error-msg" id="error"></div>
 
-  <!-- Result -->
-  <div class="result-card" id="result">
-    <h2 id="resultName"></h2>
-    <div class="result-actions">
-      <a id="resultMaps" href="#" target="_blank" rel="noopener">Open in Google Maps</a>
-      <a id="resultWebsite" href="#" target="_blank" rel="noopener" style="display:none;">Visit Website</a>
-    </div>
-    <div class="result-meta">
-      <div id="resultAddress"></div>
-      <div><span class="rating" id="resultRating"></span> <span id="resultOpenStatus"></span></div>
-      <div id="resultHours"></div>
-      <div class="distance" id="resultDistance"></div>
-    </div>
-    <div class="result-description" id="resultDesc">Loading description...</div>
-  </div>
+  <!-- Results -->
+  <div id="results"></div>
 
   <!-- Dev: All Results Debug Panel -->
   <div class="dev-panel" id="devPanel"></div>
@@ -593,20 +588,12 @@ const geoStatus = document.getElementById('geoStatus');
 const zipcodeInput = document.getElementById('zipcode');
 const ddInput = document.getElementById('dd');
 const distanceSelect = document.getElementById('distance');
+const resultCountSelect = document.getElementById('resultCount');
 const openNowCheckbox = document.getElementById('openNow');
 const generateBtn = document.getElementById('generateBtn');
 const spinner = document.getElementById('spinner');
 const errorDiv = document.getElementById('error');
-const resultCard = document.getElementById('result');
-const resultName = document.getElementById('resultName');
-const resultAddress = document.getElementById('resultAddress');
-const resultRating = document.getElementById('resultRating');
-const resultOpenStatus = document.getElementById('resultOpenStatus');
-const resultDistance = document.getElementById('resultDistance');
-const resultDesc = document.getElementById('resultDesc');
-const resultMaps = document.getElementById('resultMaps');
-const resultWebsite = document.getElementById('resultWebsite');
-const resultHours = document.getElementById('resultHours');
+const resultsContainer = document.getElementById('results');
 const devPanel = document.getElementById('devPanel');
 const devToggle = document.getElementById('devToggle');
 
@@ -1003,6 +990,79 @@ function formatRating(rating, count) {
   return `${stars} ${rating.toFixed(1)}${countStr}`;
 }
 
+/** Pick n distinct random items from arr */
+function pickRandom(arr, n) {
+  const copy = [...arr];
+  const out = [];
+  while (out.length < n && copy.length > 0) {
+    const idx = Math.floor(Math.random() * copy.length);
+    out.push(copy.splice(idx, 1)[0]);
+  }
+  return out;
+}
+
+/** Build a result card DOM node for a place. Returns { card, name, address, descEl } */
+function createResultCard(place, userLocation) {
+  const name = place.displayName?.text || 'Unknown Activity';
+  const address = place.formattedAddress || '';
+  const rating = place.rating;
+  const ratingCount = place.userRatingCount;
+  const isOpen = place.currentOpeningHours?.openNow;
+  const mapsUrl = place.googleMapsUri || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + ' ' + address)}`;
+
+  let distText = '';
+  if (userLocation && place.location) {
+    const dist = haversine(userLocation.lat, userLocation.lng, place.location.latitude, place.location.longitude);
+    distText = `~${dist.toFixed(1)} miles from you`;
+  }
+
+  const openStatusClass = isOpen ? 'open' : 'closed';
+  const openStatusText = isOpen === true ? ' \u00b7 Open Now' : isOpen === false ? ' \u00b7 Closed' : '';
+
+  let hoursText = '';
+  const weekdays = place.currentOpeningHours?.weekdayDescriptions;
+  if (weekdays && weekdays.length === 7) {
+    const todayIndex = (new Date().getDay() + 6) % 7;
+    const todayLine = weekdays[todayIndex];
+    const colonPos = todayLine.indexOf(':');
+    hoursText = colonPos !== -1 ? "Today's Hours: " + todayLine.substring(colonPos + 1).trim() : todayLine;
+  }
+
+  const card = document.createElement('div');
+  card.className = 'result-card active';
+  card.innerHTML = `
+    <h2></h2>
+    <div class="result-actions">
+      <a class="maps-link" href="#" target="_blank" rel="noopener">Open in Google Maps</a>
+      <a class="website-link" href="#" target="_blank" rel="noopener" style="display:none;">Visit Website</a>
+    </div>
+    <div class="result-meta">
+      <div class="address-line"></div>
+      <div><span class="rating-line"></span><span class="open-status"></span></div>
+      <div class="hours-line"></div>
+      <div class="distance"></div>
+    </div>
+    <div class="result-description loading">Generating description...</div>
+  `;
+
+  card.querySelector('h2').textContent = name;
+  card.querySelector('.address-line').textContent = address;
+  card.querySelector('.rating-line').innerHTML = formatRating(rating, ratingCount);
+  const openStatusSpan = card.querySelector('.open-status');
+  openStatusSpan.classList.add(openStatusClass);
+  openStatusSpan.textContent = openStatusText;
+  card.querySelector('.hours-line').textContent = hoursText;
+  card.querySelector('.distance').textContent = distText;
+  card.querySelector('.maps-link').href = mapsUrl;
+  if (place.websiteUri) {
+    const w = card.querySelector('.website-link');
+    w.href = place.websiteUri;
+    w.style.display = '';
+  }
+
+  return { card, name, address, descEl: card.querySelector('.result-description') };
+}
+
 // --- Filter mode toggle ---
 const filterModeDiv = document.getElementById('filterMode');
 const categoryLabel = document.getElementById('categoryLabel');
@@ -1046,7 +1106,7 @@ generateBtn.addEventListener('click', async () => {
   }
 
   clearError();
-  resultCard.classList.remove('active');
+  resultsContainer.innerHTML = '';
   devPanel.classList.remove('active');
   devPanel.innerHTML = '';
   setLoading(true);
@@ -1112,14 +1172,19 @@ generateBtn.addEventListener('click', async () => {
       fallbackResults: null
     };
 
-    // 6. Try LLM suggestions one by one
-    let foundPlace = null;
+    // 6. How many results does the user want
+    const requested = parseInt(resultCountSelect.value, 10) || 1;
+
+    // 7. Try LLM suggestions one by one \u2014 collect up to `requested` distinct places
+    const foundPlaces = [];
+    const seenKeys = new Set();
 
     if (ideas.length > 0) {
-      // Shuffle for randomness
       const shuffled = [...ideas].sort(() => Math.random() - 0.5);
 
       for (const idea of shuffled) {
+        if (foundPlaces.length >= requested) break;
+
         try {
           const places = await lookupPlace(idea, searchCenter.lat, searchCenter.lng, radiusMeters);
 
@@ -1130,7 +1195,7 @@ generateBtn.addEventListener('click', async () => {
 
           const place = places[0];
 
-          // Check distance
+          // Distance check
           if (place.location) {
             const dist = haversine(searchCenter.lat, searchCenter.lng, place.location.latitude, place.location.longitude);
             if (dist > radiusMiles * 1.2) {
@@ -1139,13 +1204,13 @@ generateBtn.addEventListener('click', async () => {
             }
           }
 
-          // Check open now
+          // Open now check
           if (openNow && (!place.currentOpeningHours || place.currentOpeningHours.openNow !== true)) {
             devLog.skipped.push({ idea, reason: 'Closed' });
             continue;
           }
 
-          // Check business status
+          // Business status check
           if (place.businessStatus && place.businessStatus !== 'OPERATIONAL') {
             devLog.skipped.push({ idea, reason: `Status: ${place.businessStatus}` });
             continue;
@@ -1171,10 +1236,19 @@ generateBtn.addEventListener('click', async () => {
             }
           }
 
-          foundPlace = place;
-          devLog.picked = idea;
-          devLog.googleResult = place;
-          break;
+          // Dedup
+          const key = (place.displayName?.text || '') + '|' + (place.formattedAddress || '');
+          if (seenKeys.has(key)) {
+            devLog.skipped.push({ idea, reason: 'Duplicate' });
+            continue;
+          }
+          seenKeys.add(key);
+
+          foundPlaces.push(place);
+          if (devLog.picked === null) {
+            devLog.picked = idea;
+            devLog.googleResult = place;
+          }
         } catch {
           devLog.skipped.push({ idea, reason: 'Lookup error' });
           continue;
@@ -1182,89 +1256,60 @@ generateBtn.addEventListener('click', async () => {
       }
     }
 
-    // 7. Fallback to Google Places search if LLM path failed
-    if (!foundPlace) {
+    // 8. Fallback to Google Places search if we didn't get enough from LLM
+    if (foundPlaces.length < requested) {
       devLog.usedFallback = true;
-      console.log('LLM path failed, falling back to Google Places search');
+      console.log(`LLM path produced ${foundPlaces.length}/${requested} \u2014 falling back to Google Places search`);
 
       try {
-        const isShoppingIncluded = categoryFilterMode === 'include' && selectedCategories.includes('shopping');
-        const excludeStores = !isShoppingIncluded;
-
         const rawPlaces = await searchNearbyByType(searchCenter.lat, searchCenter.lng, radiusMeters, DEFAULT_ACTIVITY_TYPES);
         const mergedPlaces = deduplicate(rawPlaces);
         let places = filterPlaces(mergedPlaces, openNow, searchCenter, radiusMeters, excludeStores, excludeParks);
         const labeledResults = [{ label: 'Nearby: default types', places: rawPlaces }];
 
+        // Drop ones we already have
+        places = places.filter(p => {
+          const key = (p.displayName?.text || '') + '|' + (p.formattedAddress || '');
+          return !seenKeys.has(key);
+        });
+
         devLog.fallbackResults = { labeledResults, mergedPlaces, filteredPlaces: places, searchCenter };
 
-        if (places.length === 0) {
+        if (foundPlaces.length === 0 && places.length === 0) {
           renderDevPanel(devLog);
           throw new Error('No results found. Try expanding your search distance or removing filters.');
         }
 
-        foundPlace = places[Math.floor(Math.random() * places.length)];
+        const needed = requested - foundPlaces.length;
+        const extras = pickRandom(places, Math.min(needed, places.length));
+        for (const p of extras) {
+          foundPlaces.push(p);
+          seenKeys.add((p.displayName?.text || '') + '|' + (p.formattedAddress || ''));
+        }
       } catch (fallbackErr) {
-        console.error('Fallback search also failed:', fallbackErr);
-        renderDevPanel(devLog);
-        throw fallbackErr;
+        if (foundPlaces.length === 0) {
+          console.error('Fallback search also failed:', fallbackErr);
+          renderDevPanel(devLog);
+          throw fallbackErr;
+        }
+        console.warn('Fallback search failed, using partial LLM results:', fallbackErr);
       }
     }
 
-    // Render dev panel
     renderDevPanel(devLog);
 
-    // 8. Display result
-    const place = foundPlace;
-    const name = place.displayName?.text || 'Unknown Activity';
-    const address = place.formattedAddress || '';
-    const rating = place.rating;
-    const ratingCount = place.userRatingCount;
-    const isOpen = place.currentOpeningHours?.openNow;
-    const mapsUrl = place.googleMapsUri || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + ' ' + address)}`;
-
-    // 9. Calculate distance if user provided coordinates
-    let distText = '';
-    if (userLocation && place.location) {
-      const dist = haversine(userLocation.lat, userLocation.lng, place.location.latitude, place.location.longitude);
-      distText = `~${dist.toFixed(1)} miles from you`;
-    }
-
-    // 10. Display
-    resultName.textContent = name;
-    resultAddress.textContent = address;
-    resultRating.innerHTML = formatRating(rating, ratingCount);
-    resultOpenStatus.className = isOpen ? 'open' : 'closed';
-    resultOpenStatus.textContent = isOpen === true ? ' \u00b7 Open Now' : isOpen === false ? ' \u00b7 Closed' : '';
-
-    const weekdays = place.currentOpeningHours?.weekdayDescriptions;
-    if (weekdays && weekdays.length === 7) {
-      const todayIndex = (new Date().getDay() + 6) % 7;
-      const todayLine = weekdays[todayIndex];
-      const colonPos = todayLine.indexOf(':');
-      resultHours.textContent = colonPos !== -1 ? "Today's Hours: " + todayLine.substring(colonPos + 1).trim() : todayLine;
-    } else {
-      resultHours.textContent = '';
-    }
-
-    resultDistance.textContent = distText;
-    resultMaps.href = mapsUrl;
-    if (place.websiteUri) {
-      resultWebsite.href = place.websiteUri;
-      resultWebsite.style.display = '';
-    } else {
-      resultWebsite.style.display = 'none';
-    }
-    resultDesc.textContent = 'Generating description...';
-    resultDesc.classList.add('loading');
-    resultCard.classList.add('active');
+    // 9. Render cards
+    const cards = foundPlaces.map(p => createResultCard(p, userLocation));
+    cards.forEach(({ card }) => resultsContainer.appendChild(card));
 
     setLoading(false);
 
-    // 11. Generate AI description (non-blocking for UI)
-    const desc = await generateDescription(name, address);
-    resultDesc.textContent = desc;
-    resultDesc.classList.remove('loading');
+    // 10. Generate AI descriptions in parallel
+    await Promise.all(cards.map(async ({ name, address, descEl }) => {
+      const desc = await generateDescription(name, address);
+      descEl.textContent = desc;
+      descEl.classList.remove('loading');
+    }));
 
   } catch (err) {
     console.error('Generate failed:', err);
